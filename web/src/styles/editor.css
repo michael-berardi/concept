@@ -1,0 +1,137 @@
+/* Block editor typography — restrained, print-like. */
+.block-editor .tiptap {
+  outline: none;
+  min-height: 320px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.block-editor .tiptap > * + * {
+  margin-top: 0.7em;
+}
+
+.block-editor .tiptap h1,
+.block-editor .tiptap h2,
+.block-editor .tiptap h3 {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin-top: 1.4em;
+}
+
+.block-editor .tiptap h1 {
+  font-size: 24px;
+}
+.block-editor .tiptap h2 {
+  font-size: 19px;
+}
+.block-editor .tiptap h3 {
+  font-size: 15.5px;
+}
+
+.block-editor .tiptap ul,
+.block-editor .tiptap ol {
+  padding-left: 1.3em;
+}
+
+.block-editor .tiptap ul[data-type="taskList"] {
+  padding-left: 0.1em;
+  list-style: none;
+}
+
+.block-editor .tiptap ul[data-type="taskList"] li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.block-editor .tiptap ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin-top: 4px;
+}
+
+.block-editor .tiptap blockquote {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 14px;
+  color: var(--text-2);
+}
+
+.block-editor .tiptap pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.block-editor .tiptap code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.86em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.block-editor .tiptap pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.block-editor .tiptap a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+}
+
+.block-editor .tiptap img {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.block-editor .tiptap hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.6em 0;
+}
+
+.block-editor .tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+}
+
+.block-editor .tiptap th,
+.block-editor .tiptap td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  min-width: 80px;
+}
+
+.block-editor .tiptap th {
+  background: var(--surface-2);
+  font-weight: 550;
+}
+
+.block-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-3);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.block-editor[data-readonly] .tiptap {
+  opacity: 0.85;
+}
+
+/* wiki links render as plain text with a subtle marker */
+.wiki-hint {
+  color: var(--text-3);
+}

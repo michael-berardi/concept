@@ -1,0 +1,134 @@
+/* Concept — theme tokens. Six themes, tokenised as CSS variables. */
+
+:root,
+[data-theme="oled"] {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #111111;
+  --surface-3: #171717;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #f2f2f2;
+  --text-2: rgba(255, 255, 255, 0.62);
+  --text-3: rgba(255, 255, 255, 0.38);
+  --accent: #6c8cff;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(108, 140, 255, 0.14);
+  --danger: #ff6b5e;
+  --warn: #e6b455;
+  --ok: #67c98a;
+  --hover: rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.09);
+  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+[data-theme="graphite"] {
+  --bg: #161618;
+  --surface: #1c1c1f;
+  --surface-2: #232327;
+  --surface-3: #2a2a2f;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #ececee;
+  --text-2: rgba(236, 236, 238, 0.62);
+  --text-3: rgba(236, 236, 238, 0.4);
+  --accent: #8fa4e8;
+  --accent-text: #10131c;
+  --accent-soft: rgba(143, 164, 232, 0.16);
+  --danger: #e9776b;
+  --warn: #d9b264;
+  --ok: #7fca97;
+  --hover: rgba(255, 255, 255, 0.055);
+  --active: rgba(255, 255, 255, 0.1);
+  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+[data-theme="paper"] {
+  --bg: #f7f4ee;
+  --surface: #fffdf9;
+  --surface-2: #f3efe7;
+  --surface-3: #eae4d8;
+  --border: rgba(63, 52, 38, 0.14);
+  --border-strong: rgba(63, 52, 38, 0.24);
+  --text: #26211b;
+  --text-2: rgba(38, 33, 27, 0.64);
+  --text-3: rgba(38, 33, 27, 0.42);
+  --accent: #a4551f;
+  --accent-text: #fffdf9;
+  --accent-soft: rgba(164, 85, 31, 0.12);
+  --danger: #b3382c;
+  --warn: #97701d;
+  --ok: #3d7a4e;
+  --hover: rgba(63, 52, 38, 0.05);
+  --active: rgba(63, 52, 38, 0.09);
+  --shadow-pop: 0 10px 30px rgba(63, 52, 38, 0.14);
+  color-scheme: light;
+}
+
+[data-theme="snow"] {
+  --bg: #fafbfc;
+  --surface: #ffffff;
+  --surface-2: #f2f4f6;
+  --surface-3: #e8ebef;
+  --border: rgba(23, 32, 44, 0.12);
+  --border-strong: rgba(23, 32, 44, 0.22);
+  --text: #171c23;
+  --text-2: rgba(23, 28, 35, 0.62);
+  --text-3: rgba(23, 28, 35, 0.4);
+  --accent: #3457d5;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(52, 87, 213, 0.1);
+  --danger: #c03a2e;
+  --warn: #8f6a15;
+  --ok: #2e7d4f;
+  --hover: rgba(23, 32, 44, 0.045);
+  --active: rgba(23, 32, 44, 0.085);
+  --shadow-pop: 0 10px 30px rgba(23, 32, 44, 0.12);
+  color-scheme: light;
+}
+
+[data-theme="midnight"] {
+  --bg: #090d17;
+  --surface: #0e1420;
+  --surface-2: #131a29;
+  --surface-3: #1a2233;
+  --border: rgba(160, 180, 230, 0.1);
+  --border-strong: rgba(160, 180, 230, 0.18);
+  --text: #e6eaf4;
+  --text-2: rgba(230, 234, 244, 0.62);
+  --text-3: rgba(230, 234, 244, 0.4);
+  --accent: #7d9cff;
+  --accent-text: #0a0f1c;
+  --accent-soft: rgba(125, 156, 255, 0.15);
+  --danger: #ef7b70;
+  --warn: #ddb45f;
+  --ok: #74c992;
+  --hover: rgba(160, 180, 230, 0.06);
+  --active: rgba(160, 180, 230, 0.11);
+  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+[data-theme="forest"] {
+  --bg: #0c110e;
+  --surface: #111713;
+  --surface-2: #171f1a;
+  --surface-3: #1e2822;
+  --border: rgba(190, 220, 200, 0.09);
+  --border-strong: rgba(190, 220, 200, 0.17);
+  --text: #e7ece7;
+  --text-2: rgba(231, 236, 231, 0.62);
+  --text-3: rgba(231, 236, 231, 0.4);
+  --accent: #8fbf9a;
+  --accent-text: #0d130f;
+  --accent-soft: rgba(143, 191, 154, 0.14);
+  --danger: #e57a6f;
+  --warn: #d3ae62;
+  --ok: #7fca97;
+  --hover: rgba(190, 220, 200, 0.055);
+  --active: rgba(190, 220, 200, 0.1);
+  --shadow-pop: 0 8px 32px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
