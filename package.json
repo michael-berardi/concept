@@ -1,0 +1,11 @@
+{
+  "name": "concept",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev:server": "pnpm --filter @concept/server dev",
+    "dev:web": "pnpm --filter @concept/web dev",
+    "build": "pnpm --filter @concept/web build && pnpm --filter @concept/server build",
+    "test": "pnpm -r test"
+  }
+}

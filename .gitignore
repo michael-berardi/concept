@@ -1,0 +1,10 @@
+node_modules
+dist
+server/public
+.retex
+*.log
+.DS_Store
+.build
+macos/**/.build
+*.sqlite*
+data/
