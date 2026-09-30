@@ -1,0 +1,7 @@
+.build/
+DerivedData/
+dist/
+Concept.app/
+icon.iconset/
+*.zip
+.DS_Store

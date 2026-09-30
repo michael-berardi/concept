@@ -1,0 +1,30 @@
+services:
+  concept:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: concept:latest
+    container_name: concept
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Required in production: a long random string used to encrypt git
+      # tokens at rest and to sign sessions. Generate one with:
+      #   openssl rand -base64 32
+      CONCEPT_SECRET: ${CONCEPT_SECRET:-}
+      # Set to 1 to allow open registration without invites (default: invite-only).
+      CONCEPT_OPEN_SIGNUP: ${CONCEPT_OPEN_SIGNUP:-0}
+      PORT: "8787"
+      CONCEPT_DATA_DIR: /data
+    volumes:
+      - concept-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  concept-data:
