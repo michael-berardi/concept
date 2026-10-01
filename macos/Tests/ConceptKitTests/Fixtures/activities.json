@@ -1,0 +1,91 @@
+{
+  "views": [
+    {
+      "id": "table",
+      "name": "Table",
+      "type": "table",
+      "filters": [],
+      "sorts": []
+    },
+    {
+      "id": "board",
+      "name": "Board",
+      "type": "board",
+      "groupBy": "status",
+      "filters": [],
+      "sorts": [
+        {
+          "key": "rank",
+          "dir": "asc"
+        }
+      ]
+    }
+  ],
+  "slug": "activities",
+  "name": "Activities",
+  "icon": "activity",
+  "recordType": "activity",
+  "properties": [
+    {
+      "key": "title",
+      "name": "Name",
+      "type": "title"
+    },
+    {
+      "key": "status",
+      "name": "Status",
+      "type": "status",
+      "options": [
+        {
+          "id": "Todo",
+          "color": "gray"
+        },
+        {
+          "id": "Doing",
+          "color": "blue"
+        },
+        {
+          "id": "Review",
+          "color": "amber"
+        },
+        {
+          "id": "Done",
+          "color": "green"
+        }
+      ]
+    },
+    {
+      "key": "company",
+      "name": "Company",
+      "type": "relation",
+      "database": "companies"
+    },
+    {
+      "key": "contact",
+      "name": "Contact",
+      "type": "relation",
+      "database": "contacts"
+    },
+    {
+      "key": "deal",
+      "name": "Deal",
+      "type": "relation",
+      "database": "deals"
+    },
+    {
+      "key": "owner",
+      "name": "Owner",
+      "type": "person"
+    },
+    {
+      "key": "due",
+      "name": "When",
+      "type": "date"
+    },
+    {
+      "key": "archived",
+      "name": "Archived",
+      "type": "checkbox"
+    }
+  ]
+}

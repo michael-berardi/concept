@@ -1,0 +1,108 @@
+{
+  "views": [
+    {
+      "id": "table",
+      "name": "Table",
+      "type": "table",
+      "filters": [],
+      "sorts": []
+    },
+    {
+      "id": "board",
+      "name": "Pipeline",
+      "type": "board",
+      "groupBy": "status",
+      "filters": [],
+      "sorts": [
+        {
+          "key": "rank",
+          "dir": "asc"
+        }
+      ],
+      "visible": [
+        "value",
+        "due",
+        "owner"
+      ]
+    }
+  ],
+  "slug": "deals",
+  "name": "Deals",
+  "icon": "target",
+  "recordType": "deal",
+  "properties": [
+    {
+      "key": "title",
+      "name": "Name",
+      "type": "title"
+    },
+    {
+      "key": "status",
+      "name": "Stage",
+      "type": "status",
+      "options": [
+        {
+          "id": "Inbox"
+        },
+        {
+          "id": "Qualified"
+        },
+        {
+          "id": "Proposal"
+        },
+        {
+          "id": "Negotiation"
+        },
+        {
+          "id": "Won"
+        },
+        {
+          "id": "Lost"
+        }
+      ]
+    },
+    {
+      "key": "value",
+      "name": "Value",
+      "type": "number",
+      "format": "currency"
+    },
+    {
+      "key": "company",
+      "name": "Company",
+      "type": "relation",
+      "database": "companies"
+    },
+    {
+      "key": "contact",
+      "name": "Contact",
+      "type": "relation",
+      "database": "contacts"
+    },
+    {
+      "key": "owner",
+      "name": "Owner",
+      "type": "person"
+    },
+    {
+      "key": "due",
+      "name": "Close date",
+      "type": "date"
+    },
+    {
+      "key": "next_action",
+      "name": "Next action",
+      "type": "text"
+    },
+    {
+      "key": "tags",
+      "name": "Tags",
+      "type": "multi_select"
+    },
+    {
+      "key": "archived",
+      "name": "Archived",
+      "type": "checkbox"
+    }
+  ]
+}

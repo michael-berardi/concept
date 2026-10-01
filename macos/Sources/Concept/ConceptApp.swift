@@ -13,6 +13,7 @@ struct ConceptApp: App {
                 .environment(\.theme, model.theme)
         }
         .windowStyle(.automatic)
+        .defaultSize(width: 1320, height: 820)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Page") { model.newPage(title: "Untitled") }
@@ -24,12 +25,16 @@ struct ConceptApp: App {
                 Button("Search…") { model.showQuickSwitcher = true }
                     .keyboardShortcut("k", modifiers: .command)
                 Divider()
-                Button("Workspace Mode") { model.mode = .workspace }
+                Button("Workspace") { model.mode = .workspace }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Vault Mode") { model.mode = .vault }
+                Button("Board") { model.mode = .board }
                     .keyboardShortcut("2", modifiers: .command)
-                Button("Board Mode") { model.mode = .board }
-                    .keyboardShortcut("3", modifiers: .command)
+                Button("Graph") { model.mode = .workspace; model.showGraph.toggle() }
+                    .keyboardShortcut("g", modifiers: .command)
+                Button("Toggle Side Panel") { model.showRightPanel.toggle() }
+                    .keyboardShortcut("b", modifiers: [.command, .option])
+                Button("Toggle Source / Reading") { model.readingMode.toggle() }
+                    .keyboardShortcut("e", modifiers: .command)
             }
             CommandMenu("Vault") {
                 Button("Save Current File") {
@@ -78,22 +83,20 @@ struct RootView: View {
                     switch model.mode {
                     case .workspace:
                         WorkspaceSidebar()
-                    case .vault:
-                        VaultFileTree()
                     case .board:
                         BoardSidebar()
                     }
                     Hairline(horizontal: false)
                     VStack(spacing: 0) {
-                        if model.mode == .vault {
+                        if model.mode == .workspace && !model.openTabs.isEmpty {
                             TabBar()
                             Hairline()
                         }
                         content
                     }
                     Hairline(horizontal: false)
-                    if model.mode == .vault && model.showInspector {
-                        VaultInspector()
+                    if model.mode == .workspace && model.showRightPanel && model.selectedPage != nil && !model.showGraph {
+                        Inspector()
                     }
                 }
                 if let error = model.lastError {
@@ -124,22 +127,14 @@ struct RootView: View {
     private var content: some View {
         switch model.mode {
         case .workspace:
-            if let db = model.selectedDatabase, model.selectedPage == nil {
-                BoardView(databaseSlug: db)
+            if model.showGraph {
+                GraphView()
+            } else if let db = model.selectedDatabase, model.selectedPage == nil {
+                TableView(databaseSlug: db)
             } else if let path = model.selectedPage {
                 PageEditorView(path: path)
             } else {
-                EmptyState(icon: .page, title: "No page selected",
-                           detail: "Choose a page in the sidebar or press ⌘O to search.")
-            }
-        case .vault:
-            if model.showGraph {
-                GraphView()
-            } else if let path = model.activeTab {
-                VaultEditorView(path: path)
-            } else {
-                EmptyState(icon: .doc, title: "No file open",
-                           detail: "Open a file from the tree or press ⌘O.")
+                CRMHomeView()
             }
         case .board:
             if let db = model.selectedDatabase {

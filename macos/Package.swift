@@ -21,7 +21,8 @@ let package = Package(
         .testTarget(
             name: "ConceptKitTests",
             dependencies: ["ConceptKit"],
-            path: "Tests/ConceptKitTests"
+            path: "Tests/ConceptKitTests",
+            resources: [.copy("Fixtures")]
         ),
     ]
 )

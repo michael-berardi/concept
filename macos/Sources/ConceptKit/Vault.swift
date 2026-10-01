@@ -343,6 +343,23 @@ public final class Vault {
         }.sorted { $0.slug < $1.slug }
     }
 
+    /// Schemas that exist but cannot be decoded, with the reason (never silent).
+    public func databaseProblems() -> [(slug: String, message: String)] {
+        let dir = absoluteURL(Self.databasesDirectory)
+        guard let items = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return [] }
+        return items.filter { $0.pathExtension == "json" }.compactMap { item in
+            let slug = item.deletingPathExtension().lastPathComponent
+            do {
+                _ = try DatabaseJSON.decodeDatabase(try Data(contentsOf: item), slug: slug)
+                return nil
+            } catch let error as ConceptError {
+                return (slug, error.message)
+            } catch {
+                return (slug, String(describing: error))
+            }
+        }
+    }
+
     public func database(slug: String) throws -> Database {
         let fileURL = absoluteURL("\(Self.databasesDirectory)/\(slug).json")
         guard fileManager.fileExists(atPath: fileURL.path) else {

@@ -3,120 +3,6 @@ import ConceptKit
 
 // MARK: - File tree (every file on disk, quiet gray)
 
-struct VaultFileTree: View {
-    @Environment(\.theme) private var theme
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionLabel("Files")
-                if let files = model.snapshot?.files.filter({ $0.isDirectory && $0.path != "" }) {
-                    ForEach(files, id: \.path) { dir in
-                        DirectoryRow(path: dir.path)
-                    }
-                }
-                // Loose files at the root.
-                if let rootFiles = model.snapshot?.files.filter({ !$0.isDirectory && !$0.path.contains("/") }) {
-                    ForEach(rootFiles, id: \.path) { file in
-                        FileRow(path: file.path, depth: 0)
-                    }
-                }
-            }
-            .padding(10)
-        }
-        .frame(minWidth: 212, idealWidth: 224, maxWidth: 250)
-        .background(theme.surface)
-    }
-}
-
-struct DirectoryRow: View {
-    @Environment(\.theme) private var theme
-    @Environment(AppModel.self) private var model
-    let path: String
-    @State private var expanded = true
-
-    private var name: String { (path as NSString).lastPathComponent }
-    private var depth: Int { path.split(separator: "/").count - 1 }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                expanded.toggle()
-            } label: {
-                HStack(spacing: 4) {
-                    Icon(name: expanded ? .chevronDown : .chevronRight, size: 10)
-                        .padding(.leading, CGFloat(depth * 12))
-                    Icon(name: .vault, size: 13)
-                    Text(name).font(AppFont.small).foregroundStyle(theme.textSecondary).lineLimit(1)
-                    Spacer()
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            if expanded {
-                let children = (model.snapshot?.files ?? []).filter {
-                    !$0.isDirectory && $0.path.hasPrefix(path + "/") &&
-                    ($0.path as NSString).deletingLastPathComponent == path
-                }
-                ForEach(children, id: \.path) { child in
-                    FileRow(path: child.path, depth: depth + 1)
-                }
-                let subdirs = (model.snapshot?.files ?? []).filter {
-                    $0.isDirectory && $0.path != "" && ($0.path as NSString).deletingLastPathComponent == path
-                }
-                ForEach(subdirs, id: \.path) { sub in
-                    DirectoryRow(path: sub.path)
-                }
-            }
-        }
-    }
-}
-
-struct FileRow: View {
-    @Environment(\.theme) private var theme
-    @Environment(AppModel.self) private var model
-    let path: String
-    let depth: Int
-
-    private var isSelected: Bool { model.activeTab == path || (model.mode == .vault && model.selectedFile == path) }
-
-    var body: some View {
-        let isRecord = path.hasPrefix("Data/")
-        Button {
-            model.open(path: path)
-        } label: {
-            HStack(spacing: 4) {
-                Icon(name: isRecord ? .database : .doc, size: 12)
-                    .padding(.leading, CGFloat(depth * 12))
-                Text(((path as NSString).lastPathComponent as NSString).deletingPathExtension)
-                    .font(AppFont.small)
-                    .foregroundStyle(isSelected ? theme.text : theme.textSecondary.opacity(0.85))
-                    .lineLimit(1)
-                if isRecord, let record = model.records(databaseSlug: String(path.split(separator: "/")[1]))
-                    .first(where: { $0.path == path }) {
-                    Badge(text: record.recordType, color: theme.textTertiary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2.5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 4).fill(isSelected ? theme.selection : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button("Open") { model.open(path: path) }
-            Button("Delete", role: .destructive) { model.delete(path: path) }
-        }
-    }
-}
-
-// MARK: - Tabs
-
 struct TabBar: View {
     @Environment(\.theme) private var theme
     @Environment(AppModel.self) private var model
@@ -127,7 +13,7 @@ struct TabBar: View {
                 let active = model.activeTab == tab.path
                 HStack(spacing: 6) {
                     Icon(name: tab.path.hasPrefix("Data/") ? .database : .doc, size: 11)
-                    Text(((tab.path as NSString).lastPathComponent as NSString).deletingPathExtension)
+                    Text(model.index?.document(at: tab.path)?.title ?? ((tab.path as NSString).lastPathComponent as NSString).deletingPathExtension)
                         .font(AppFont.small)
                         .foregroundStyle(active ? theme.text : theme.textSecondary)
                         .lineLimit(1)
@@ -143,93 +29,12 @@ struct TabBar: View {
                 .padding(.vertical, 6)
                 .background(active ? theme.canvas : .clear)
                 .contentShape(Rectangle())
-                .onTapGesture { model.activeTab = tab.path }
+                .onTapGesture { model.showGraph = false; model.open(path: tab.path) }
                 .overlay(alignment: .trailing) { Hairline(horizontal: false) }
             }
             Spacer()
         }
         .background(theme.surface)
-    }
-}
-
-// MARK: - Vault editor (source + reading)
-
-struct VaultEditorView: View {
-    @Environment(\.theme) private var theme
-    @Environment(AppModel.self) private var model
-    let path: String
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Text(path).font(AppFont.micro).foregroundStyle(theme.textTertiary).lineLimit(1)
-                Spacer()
-                HStack(spacing: 0) {
-                    Button {
-                        model.readingMode = false
-                    } label: {
-                        Text("Source")
-                            .font(AppFont.small)
-                            .foregroundStyle(!model.readingMode ? theme.text : theme.textSecondary)
-                            .padding(.horizontal, 12).padding(.vertical, 5)
-                            .background(!model.readingMode ? theme.surfaceRaised : .clear)
-                    }
-                    .buttonStyle(.plain)
-                    Button {
-                        model.readingMode = true
-                    } label: {
-                        Text("Reading")
-                            .font(AppFont.small)
-                            .foregroundStyle(model.readingMode ? theme.text : theme.textSecondary)
-                            .padding(.horizontal, 12).padding(.vertical, 5)
-                            .background(model.readingMode ? theme.surfaceRaised : .clear)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.hairline, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                Button {
-                    model.showGraph.toggle()
-                } label: {
-                    HStack(spacing: 5) {
-                        Icon(name: .graph, size: 13)
-                        Text("Graph").font(AppFont.small)
-                    }
-                    .foregroundStyle(model.showGraph ? theme.accent : theme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(model.showGraph ? theme.selection : .clear))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.hairline, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            Hairline()
-            if model.readingMode {
-                ScrollView {
-                    MarkdownView(body_text: model.draft(for: path)) { target in
-                        if let resolved = model.index?.resolve(target) {
-                            model.open(path: resolved)
-                        }
-                    }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                TextEditor(text: Binding(
-                    get: { model.draft(for: path) },
-                    set: { model.setDraft($0, for: path) }))
-                    .font(AppFont.mono(13))
-                    .scrollContentBackground(.hidden)
-                    .colorScheme(model.theme.isDark ? .dark : .light)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-            }
-            Hairline()
-            RetexBadgeBar(path: path)
-        }
-        .background(theme.canvas)
     }
 }
 
@@ -265,23 +70,23 @@ struct RetexBadgeBar: View {
 
 // MARK: - Inspector: properties, backlinks, outgoing, outline, tags
 
-struct VaultInspector: View {
+struct Inspector: View {
     @Environment(\.theme) private var theme
     @Environment(AppModel.self) private var model
-    @State private var section: InspectorSection = .properties
+    @State private var section: InspectorSection = .links
 
     enum InspectorSection: String, CaseIterable, Identifiable {
         case properties, links, outline, tags
         var id: String { rawValue }
     }
 
-    var path: String? { model.activeTab ?? model.selectedFile }
+    var path: String? { model.selectedPage }
 
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $section) {
                 ForEach(InspectorSection.allCases) { s in
-                    Text(s.rawValue).tag(s)
+                    Text(s.rawValue.capitalized).tag(s)
                 }
             }
             .pickerStyle(.segmented)
@@ -349,7 +154,7 @@ struct LinksPanel: View {
                 if outgoing.isEmpty { Text("—").font(AppFont.small).foregroundStyle(theme.textTertiary) }
                 Text("Backlinks (\(backlinks.count))").font(AppFont.micro.weight(.medium)).foregroundStyle(theme.textTertiary).padding(.top, 6)
                 ForEach(backlinks, id: \.self) { source in
-                    LinkLine(target: source, resolved: source)
+                    LinkLine(target: model.index?.document(at: source)?.title ?? source, resolved: source)
                 }
                 if backlinks.isEmpty { Text("—").font(AppFont.small).foregroundStyle(theme.textTertiary) }
             }
@@ -538,7 +343,7 @@ struct GraphView: View {
         let scope = model.graphScope
         computeTask = Task {
             let positions = ForceLayout.run(nodes: nodes, edges: edges,
-                                            iterations: scope == .global ? 150 : 220)
+                                            iterations: scope == .global ? 300 : 300)
             if Task.isCancelled { return }
             var map: [String: CGPoint] = [:]
             for (node, point) in zip(nodes, positions) {

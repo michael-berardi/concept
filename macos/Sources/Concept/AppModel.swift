@@ -37,7 +37,7 @@ final class AppModel {
     var selectedFile: String?
     var openTabs: [OpenTab] = []
     var activeTab: String?
-    var readingMode = false
+    var readingMode = true
     var showGraph = false
     var showRightPanel = true
     /// Back/forward navigation history over visited paths.
@@ -98,12 +98,13 @@ final class AppModel {
         }
         if let db = environment["CONCEPT_DATABASE"] { selectedDatabase = db }
         if environment["CONCEPT_SWITCHER"] == "1" { showQuickSwitcher = true }
-        if environment["CONCEPT_GRAPH"] == "1" { showGraph = true }
+        if environment["CONCEPT_GRAPH"] == "1" { showGraph = true; graphScope = .global }
         if environment["CONCEPT_PANEL"] == "0" { showRightPanel = false }
         if let path = environment["CONCEPT_CARD"], !path.isEmpty {
             cardSheet = path
         }
         if let home = environment["CONCEPT_HOME"], home == "1" { selectedPage = nil }
+        if let page = environment["CONCEPT_PAGE"], !page.isEmpty, vault != nil { open(path: page) }
     }
 
     // MARK: - Recents
@@ -129,13 +130,10 @@ final class AppModel {
             let vault = try Vault(url: url)
             self.vault = vault
             rescan()
-            selectedPage = snapshot?.pages.first?.path
-            selectedFile = snapshot?.pages.first?.path
+            selectedPage = nil
+            selectedFile = nil
             openTabs.removeAll()
             activeTab = nil
-            if let first = snapshot?.pages.first?.path {
-                open(path: first)
-            }
             syncSettings = vault.syncSettings()
             syncState = .idle
             startWatching()
@@ -163,6 +161,9 @@ final class AppModel {
             let snapshot = try vault.scan()
             self.snapshot = snapshot
             self.index = VaultIndexBuilder.build(vault: vault, snapshot: snapshot)
+            if let problem = vault.databaseProblems().first {
+                lastError = ("database.invalid", problem.message)
+            }
             // Drop drafts/tabs for files that disappeared.
             let paths = Set(snapshot.files.map(\.path))
             openTabs.removeAll { !paths.contains($0.path) }
@@ -260,7 +261,7 @@ final class AppModel {
     // MARK: - Page & record actions
 
     var activePath: String? {
-        mode == .vault ? (activeTab ?? selectedFile) : (selectedPage ?? activeTab)
+        selectedPage ?? activeTab
     }
 
     func draft(for path: String) -> String {

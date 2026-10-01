@@ -1,0 +1,42 @@
+{
+  "views": [
+    {
+      "id": "table",
+      "name": "Table",
+      "type": "table",
+      "filters": [],
+      "sorts": []
+    }
+  ],
+  "slug": "companies",
+  "name": "Companies",
+  "icon": "building",
+  "recordType": "company",
+  "properties": [
+    {
+      "key": "title",
+      "name": "Name",
+      "type": "title"
+    },
+    {
+      "key": "url",
+      "name": "Website",
+      "type": "url"
+    },
+    {
+      "key": "owner",
+      "name": "Owner",
+      "type": "person"
+    },
+    {
+      "key": "tags",
+      "name": "Tags",
+      "type": "multi_select"
+    },
+    {
+      "key": "archived",
+      "name": "Archived",
+      "type": "checkbox"
+    }
+  ]
+}
