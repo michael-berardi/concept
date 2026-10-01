@@ -9,7 +9,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Database, DbRow, SelectOption } from "@/api";
 import { api } from "@/api";
 import { Icon } from "@/ui/icons";
-import { Avatar } from "./PropEditor";
+import { useToast } from "@/ui/primitives";
 import { PropertyValue } from "./PropEditor";
 import { byRank, rankBetween, recomputeRanks, RankError } from "@/lib/rank";
 import { groupRows } from "@/lib/filters";
@@ -31,6 +31,7 @@ export function BoardView({ ws, db, viewId, rows, onRows, onOpenCard, onNewRow }
   const groupBy = view?.groupBy ?? db.properties.find((p) => p.type === "status")?.key ?? "status";
   const prop = db.properties.find((p) => p.key === groupBy);
   const options: SelectOption[] = prop?.options ?? [];
+  const { toast } = useToast();
   const [active, setActive] = useState<DbRow | null>(null);
   const [localOrder, setLocalOrder] = useState<Record<string, DbRow[]> | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -117,14 +118,17 @@ export function BoardView({ ws, db, viewId, rows, onRows, onOpenCard, onNewRow }
     setLocalOrder(Object.fromEntries([...snapshot.entries()].map(([k, v]) => [k, v])));
 
     try {
-      const res = await api.moveRow(ws, db.slug, row.id, {
+      const idx = next.findIndex((r) => r.id === row.id);
+      await api.moveRow(ws, db.slug, row.id, {
         status: (targetGroup ?? undefined) as string | undefined,
-        beforeId: null,
-        afterId: null,
+        afterId: idx > 0 ? next[idx - 1].id : null,
+        beforeId: idx < next.length - 1 ? next[idx + 1].id : null,
       });
-      onRows(res.rows);
-    } catch {
-      onRows(rows); // revert to authoritative state on failure
+      // The server owns ranks (it may resequence a column): take its list.
+      onRows((await api.rows(ws, db.slug)).rows);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not move the card", "error");
+      onRows(rows); // revert to the last known server state
     } finally {
       setLocalOrder(null);
     }

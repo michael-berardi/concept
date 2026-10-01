@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { api } from "@/api";
 import type { ActivityEntry, Database, DbRow } from "@/api";
 import { Icon } from "@/ui/icons";
@@ -19,6 +19,7 @@ const stem = (p: string) => p.split("/").pop()!.replace(/\.md$/, "");
 export function CrmHome() {
   const { ws = "" } = useParams();
   const nav = useNavigate();
+  const outlet = useOutletContext<{ newPage: () => void }>();
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<unknown>(null);
 
@@ -67,6 +68,7 @@ export function CrmHome() {
   if (error) return <ErrorState error={error} />;
   if (!data) return <Loading />;
 
+  const empty = !data.dbs.some((d) => (data.rows[d.slug] ?? []).length > 0) && data.recent.length === 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
@@ -74,7 +76,7 @@ export function CrmHome() {
     <div className="home">
       <h1 className="home-title">{greeting}</h1>
 
-      {pipeline ? (
+      {pipeline && pipeline.per.some((p) => p.count > 0) ? (
         <section className="home-sec">
           <div className="home-head">
             <h2>Pipeline</h2>
@@ -93,6 +95,18 @@ export function CrmHome() {
         </section>
       ) : null}
 
+      {empty ? (
+        <section className="home-sec">
+          <p className="home-lead">Your workspace is empty. Start with a page, add your first deal, or invite your team.</p>
+          <div className="home-actions">
+            <button className="btn primary" onClick={() => outlet.newPage()}>New page</button>
+            <Link className="btn" to={`/w/${ws}/db/deals`}>Add a deal</Link>
+            <Link className="btn" to={`/w/${ws}/settings/members`}>Invite people</Link>
+          </div>
+        </section>
+      ) : null}
+
+      {empty ? null : (<>
       <section className="home-sec">
         <div className="home-head"><h2>Coming up</h2></div>
         {due.length === 0 ? (
@@ -124,6 +138,7 @@ export function CrmHome() {
           ))
         )}
       </section>
+      </>)}
     </div>
   );
 }

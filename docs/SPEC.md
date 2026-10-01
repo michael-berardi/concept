@@ -1,6 +1,6 @@
 # Concept — product and technical spec
 
-Concept is an open-source workspace that fuses Notion (pages, databases) and Trello (boards) and adds a CRM. Your data is a folder of Markdown files (a **vault**, compatible with [Retex](https://github.com/)). You can self-host a multi-team server, use the native macOS app on a local vault, or both. Git is the sync layer.
+Concept is an open-source workspace that fuses Notion (pages, databases) and Trello (boards) and adds a CRM. Your data is a folder of Markdown files (a **vault**, compatible with [Retex](https://github.com/michael-berardi/retex)). You can self-host a multi-team server, use the native macOS app on a local vault, or both. Git is the sync layer.
 
 ## Principles
 1. **Files are the truth.** Every page and every database row is a Markdown file with YAML frontmatter. The SQLite database only holds an index and things that must not live in git (users, sessions, ACLs, comments cache).
@@ -132,12 +132,14 @@ Sidebar (workspaces switcher, search ⌘K, favourites, page tree, databases), bl
 ## Quality bar
 Unit tests in every package; API integration tests; Playwright-free visual verification via OverSeer browser screenshots at 375 px and 1920 px; `retex doctor` passes on a vault written by Concept; MIT license; no secrets in repo.
 
-## Vault mode (Obsidian-style) — the third mode
-Concept has three ways to look at the same files, switchable in one click (segmented control in the top bar, ⌘1/⌘2/⌘3) and always on the same selection:
-1. **Workspace** — Notion/Trello/CRM: pages, databases, boards.
-2. **Vault** — the raw Markdown tree: every file and folder as it exists on disk (including Retex records and files Concept does not manage), a quiet gray file explorer, tabs, plain Markdown source + reading view toggle, frontmatter shown as a tidy properties panel, backlinks/outgoing links/outline side panel, tags pane, **graph view** (force-directed, local and global, gray nodes, accent on the focused note), quick switcher ⌘O, wiki-link autocompletion, Retex status badges on records.
-3. **Board/CRM** lenses are views inside Workspace; selecting a record in Vault mode and pressing ⌘⏎ opens it as a card, and opening a page in Workspace can reveal its file in the tree.
-API additions: `GET /api/w/:ws/vault/tree` (all files, permission-filtered), `GET|PUT|DELETE /api/w/:ws/vault/file/*path` (raw text, If-Match), `POST /api/w/:ws/vault/move`, `GET /api/w/:ws/graph?scope=global|local&path=&depth=` → `{nodes:[{id,path,title,type,tags}],edges:[{source,target}]}`, `GET /api/w/:ws/tags`, `GET /api/w/:ws/links?path=` (outgoing, backlinks, unresolved).
+## Two views: Workspace and Board
+Concept has exactly two views, switched in the top bar (⌘1 / ⌘2).
+
+**Workspace — Notion × Obsidian.** One sidebar that is the vault: the real folders and Markdown files on disk (Retex records and unmanaged `.md` files included), databases listed as collections, hover `+` to add a child page, drag to move, favourites. Every file opens as a page: large title, a properties block (frontmatter) under it, then the body in a block editor (slash menu, `[[` picker, tables, tasks, code). `[[wiki links]]` render as real links, never raw brackets. A Source toggle shows the raw Markdown. A right panel (⌥⌘B) holds outline, backlinks, outgoing links, tags and a local graph; the full graph is ⌘G. Tabs, ⌘O quick switcher, ⌘K search.
+
+**Board — Trello × CRM.** Pick a database (Tasks, Deals, Projects…); columns are its status options; cards drag smoothly (fractional `rank`); a card opens with properties, description, checklist, comments and activity. Because cards are files, the same card is reachable from Workspace, the graph and backlinks.
+
+API additions used by Workspace: `GET /api/w/:ws/vault/tree`, `GET|PUT|DELETE /api/w/:ws/vault/file/*path`, `GET /api/w/:ws/graph`, `GET /api/w/:ws/tags`, `GET /api/w/:ws/links`.
 
 ## Design language
 Quiet, precise, Apple-grade restraint with Tesla-like minimalism; the feel of a studio that obsesses over spacing and type.
