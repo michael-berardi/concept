@@ -1310,3 +1310,6 @@ textarea.input {
 .board-tabs button:hover { color: var(--text); background: var(--hover); }
 .board-tabs button.on { color: var(--text); background: var(--active); }
 .board-add { width: auto; min-width: 34px; white-space: nowrap; }
+.home-lead { font-size: 15px; color: var(--text-2); margin: 0 0 18px; line-height: 1.55; max-width: 520px; }
+.home-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.home-actions .btn { text-decoration: none; }

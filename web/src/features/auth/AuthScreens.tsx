@@ -12,7 +12,8 @@ function AuthFrame({ title, sub, children }: { title: string; sub: string; child
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
           <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-hidden="true">
             <rect width="32" height="32" rx="7" fill="var(--surface-2)" stroke="var(--border)" />
-            <path d="M10 22V10h5.5a3.5 3.5 0 0 1 0 7H10m6.8 0L22 22" stroke="var(--text)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M21.5 11.2A7 7 0 1 0 21.5 20.8" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="21.8" cy="16" r="1.7" fill="var(--accent)" />
           </svg>
           <span style={{ fontWeight: 650, fontSize: 16, letterSpacing: "-0.01em" }}>Concept</span>
         </div>
