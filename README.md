@@ -26,6 +26,10 @@ Concept combines the parts of Notion, Trello and Obsidian that people actually u
   <img src="docs/screenshots/graph.png" alt="The vault graph" width="440">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/mac.png" alt="The native Mac app" width="620">
+</p>
+
 ## Run the server
 
 ```sh
