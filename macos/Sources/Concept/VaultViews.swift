@@ -120,7 +120,7 @@ struct PropertiesPanel: View {
             if doc.entries.isEmpty {
                 Text("No properties").font(AppFont.small).foregroundStyle(theme.textTertiary)
             }
-            ForEach(Array(doc.entries.enumerated()), id: \.offset) { _, entry in
+            ForEach(Array(doc.entries.filter { $0.key != FrontmatterDocument.commentKey }.enumerated()), id: \.offset) { _, entry in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.key).font(AppFont.micro.weight(.medium)).foregroundStyle(theme.textTertiary)
                     Text(entry.value.displayString)

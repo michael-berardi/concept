@@ -72,6 +72,9 @@ export interface RowPayload {
 
 export type ChangeHook = (workspaceSlug: string, paths: string[], actor: string) => void;
 
+/** Database slugs name directories under Data/ and schema files. */
+export const DB_SLUG = /^[a-z0-9][a-z0-9-]{0,48}$/;
+
 export class VaultEngine {
   /**
    * Called after engine mutations with the changed vault-relative paths so the
@@ -319,7 +322,8 @@ export class VaultEngine {
       if (!f.endsWith(".json")) continue;
       try {
         const parsed = JSON.parse(readFileSync(path.join(dir, f), "utf8")) as DatabaseSchema;
-        if (parsed && parsed.slug) out.push(parsed);
+        // The slug becomes a directory name: it must be plain and match the file it came from.
+        if (parsed && parsed.slug && DB_SLUG.test(parsed.slug) && f === `${parsed.slug}.json`) out.push(parsed);
       } catch {
         // Malformed schema file: skip rather than break the whole API.
       }
@@ -423,6 +427,7 @@ export class VaultEngine {
   private rowPathById(ws: { id: string; slug: string }, dbSlug: string, id: string): string {
     const stem = safeRelPath(id).split("/").pop() as string;
     if (!stem || stem.startsWith(".")) throw badRequest(`Invalid row id '${id}'`, "invalid_row_id");
+    if (!DB_SLUG.test(dbSlug)) throw badRequest(`Invalid database slug '${dbSlug}'`, "invalid_slug");
     const p = `${DATA_DIR}/${dbSlug}/${stem}.md`;
     if (!exists(this.vaultDir(ws.slug), p)) {
       throw notFound(`No row '${id}' in database '${dbSlug}'`);

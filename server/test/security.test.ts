@@ -143,3 +143,39 @@ test("SSE hides events about pages the member may not see", async () => {
   assert.ok(all.includes("Public note"), "member should see events for visible pages");
   assert.ok(!all.includes("admin@sec.test"), "event leaked an email address");
 });
+
+test("an admin cannot take or remove ownership", async () => {
+  const ws = await admin.post("/api/workspaces", { name: "OwnerCo" });
+  const s = ws.json.slug;
+  const adm = new Client(env.baseUrl);
+  const inv = await admin.post(`/api/w/${s}/invites`, { role: "admin" });
+  await adm.register("second-admin@sec.test", "password-123", inv.json.token);
+  const meAdm = await adm.get("/api/me");
+  const meOwner = await admin.get("/api/me");
+  assert.equal((await adm.patch(`/api/w/${s}/members/${meAdm.json.user.id}`, { role: "owner" })).status, 403);
+  assert.equal((await adm.patch(`/api/w/${s}/members/${meOwner.json.user.id}`, { role: "guest" })).status, 403);
+  assert.equal((await adm.delete(`/api/w/${s}/members/${meOwner.json.user.id}`)).status, 403);
+});
+
+test("a database schema with a path-like slug is ignored", async () => {
+  const vault = env.engine.vaultDir(slug);
+  writeFileSync(
+    path.join(vault, ".concept", "databases", "evil.json"),
+    JSON.stringify({ slug: "../../../x", name: "Evil", recordType: "x", properties: [{ key: "title", name: "T", type: "title" }], views: [] }),
+  );
+  const list = await admin.get(`/api/w/${slug}/databases`);
+  assert.ok(!list.json.databases.some((d: any) => d.name === "Evil"));
+});
+
+test("only a hash of the session id is stored", async () => {
+  const sid = admin.cookie!.split("=")[1];
+  const row = env.db.prepare(`SELECT id FROM sessions WHERE id = ?`).get(sid);
+  assert.equal(row, undefined);
+});
+
+test("repeated failed sign-ins are throttled", async () => {
+  const c = new Client(env.baseUrl);
+  let last = 0;
+  for (let i = 0; i < 10; i++) last = (await c.post("/api/auth/login", { email: "nobody@sec.test", password: "wrong-password" })).status;
+  assert.equal(last, 429);
+});

@@ -62,6 +62,27 @@ public final class Vault {
         url.appendingPathComponent(relativePath)
     }
 
+    /// `absoluteURL` for untrusted input: refuses `..`, absolute paths and any
+    /// route (including symlinks) that leaves the vault.
+    public func confinedURL(_ relativePath: String) throws -> URL {
+        let parts = relativePath.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        if relativePath.isEmpty || relativePath.hasPrefix("/") || parts.contains("..") || relativePath.contains("\0") {
+            throw ConceptError.invalidPath(relativePath, cause: "must be a relative path inside the vault")
+        }
+        let candidate = url.appendingPathComponent(relativePath).standardizedFileURL
+        let root = url.resolvingSymlinksInPath().path
+        // Resolve symlinks on the deepest ancestor that exists.
+        var probe = candidate
+        while !fileManager.fileExists(atPath: probe.path) && probe.path != "/" {
+            probe = probe.deletingLastPathComponent()
+        }
+        let real = probe.resolvingSymlinksInPath().path
+        guard real == root || real.hasPrefix(root + "/") else {
+            throw ConceptError.invalidPath(relativePath, cause: "resolves outside the vault")
+        }
+        return candidate
+    }
+
     public func relativePath(of url: URL) -> String? {
         let p = url.standardizedFileURL.path
         let root = self.url.path
@@ -215,7 +236,7 @@ public final class Vault {
     // MARK: - Documents
 
     public func readDocument(relativePath: String) throws -> FrontmatterDocument {
-        let fileURL = absoluteURL(relativePath)
+        let fileURL = try confinedURL(relativePath)
         guard fileManager.fileExists(atPath: fileURL.path) else {
             throw ConceptError.pageNotFound(relativePath)
         }
@@ -229,7 +250,7 @@ public final class Vault {
 
     @discardableResult
     public func writeDocument(relativePath: String, document: FrontmatterDocument) throws -> String {
-        let fileURL = absoluteURL(relativePath)
+        let fileURL = try confinedURL(relativePath)
         let dir = (relativePath as NSString).deletingLastPathComponent
         if !dir.isEmpty {
             try ensureDirectory(dir)
@@ -252,7 +273,7 @@ public final class Vault {
     }
 
     public func deleteToTrash(relativePath: String) throws {
-        let source = absoluteURL(relativePath)
+        let source = try confinedURL(relativePath)
         guard fileManager.fileExists(atPath: source.path) else {
             throw ConceptError.pageNotFound(relativePath)
         }
@@ -457,12 +478,13 @@ public final class Vault {
         return try parseRecord(relativePath: rel)
     }
 
-    /// Rank that appends to the end of the given column ("a0" when empty).
+    /// Rank that appends to the end of the given column ("4" when empty).
     func appendRank(databaseSlug: String, status: String, database: Database) throws -> String {
         let column = try records(databaseSlug: databaseSlug).filter { $0.status == status && !$0.archived }
         let ordered = RankOrder.sort(column, key: { $0.rank })
-        guard let last = ordered.last else { return Rank.first() }
-        return try Rank.key(between: last.rank, and: nil)
+        let highest = ordered.map(\.rank).filter(Rank.isValid).max()
+        guard let highest else { return Rank.first() }
+        return try Rank.key(between: highest, and: nil)
     }
 
     public func updateRecord(relativePath: String,
@@ -498,7 +520,20 @@ public final class Vault {
             try Rank.key(between: after, and: before)
         }
 
-        if afterID == nil && beforeID == nil {
+        if !ordered.allSatisfy({ Rank.isValid($0.rank) }) {
+            // The column holds rank text this scheme cannot place between (written
+            // by another tool): renumber it once, with the moved card in its new spot.
+            var list = ordered.filter { $0.path != relativePath }
+            let at: Int
+            if let a = afterID, let i = list.firstIndex(where: { $0.path == a }) { at = i + 1 }
+            else if let b = beforeID, let i = list.firstIndex(where: { $0.path == b }) { at = i }
+            else { at = list.count }
+            let keys = try Rank.rekey(count: list.count + 1)
+            var moved = ordered.first(where: { $0.path == relativePath })
+            if moved == nil { moved = try parseRecord(relativePath: relativePath) }
+            list.insert(moved!, at: at)
+            for (i, record) in list.enumerated() { rewritten.append((record.path, keys[i])) }
+        } else if afterID == nil && beforeID == nil {
             rewritten.append((relativePath, try nextKey(after: ordered.last?.rank, before: nil)))
         } else if let after = afterRecord, beforeID == nil {
             rewritten.append((relativePath, try nextKey(after: after.rank, before: nil)))

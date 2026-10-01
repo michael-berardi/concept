@@ -64,12 +64,12 @@ Follow-ups land in [[Meetings]].
 EOF
 }
 
-write_deal "acme-renewal.md"   "Acme renewal"        "Inbox"      "a0"  "mike" 24000 "2026-11-02" "priority"
-write_deal "nordic-pilot.md"   "Nordic pilot"        "Qualified"  "a0"  "sam"  8500  "2026-10-21" "security"
-write_deal "harbor-rollout.md" "Harbor rollout"      "Qualified"  "a0V" "mike" 15200 "2026-11-14" "priority"
-write_deal "vertex-rrm.md"     "Vertex platform RFP" "Proposal"   "a0"  "ana"  46000 "2026-10-30" "rfp"
-write_deal "lumen-studio.md"   "Lumen studio suite"  "Negotiation" "a0" "sam"  31000 "2026-12-05" "focus"
-write_deal "atlas-web.md"      "Atlas web refresh"   "Won"        "a0"  "ana"  19800 "2026-10-05" "signed"
+write_deal "acme-renewal.md"   "Acme renewal"        "Inbox"      "4"  "mike" 24000 "2026-11-02" "priority"
+write_deal "nordic-pilot.md"   "Nordic pilot"        "Qualified"  "4"  "sam"  8500  "2026-10-21" "security"
+write_deal "harbor-rollout.md" "Harbor rollout"      "Qualified"  "5" "mike" 15200 "2026-11-14" "priority"
+write_deal "vertex-rrm.md"     "Vertex platform RFP" "Proposal"   "4"  "ana"  46000 "2026-10-30" "rfp"
+write_deal "lumen-studio.md"   "Lumen studio suite"  "Negotiation" "4" "sam"  31000 "2026-12-05" "focus"
+write_deal "atlas-web.md"      "Atlas web refresh"   "Won"        "4"  "ana"  19800 "2026-10-05" "signed"
 
 cat > "$DIR/Data/contacts/sam-ortega.md" <<'EOF'
 ---

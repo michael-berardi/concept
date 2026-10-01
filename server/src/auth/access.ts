@@ -56,10 +56,15 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 // ---------- sessions & tokens ----------
 
+/** Only a hash of the session id is stored, so a leaked database cannot be replayed as cookies. */
+export function sessionKey(sid: string): string {
+  return createHash("sha256").update(sid).digest("hex");
+}
+
 export function createSession(db: DB, userId: string): string {
   const sid = randomBytes(32).toString("base64url");
   db.prepare(`INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`).run(
-    sid,
+    sessionKey(sid),
     userId,
     now() + SESSION_TTL_MS,
     now(),
@@ -87,7 +92,7 @@ export function userForSession(db: DB, sid: string): UserRow | null {
       `SELECT u.id, u.email, u.name, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.id = ? AND s.expires_at > ?`,
     )
-    .get(sid, now()) as UserRow | undefined;
+    .get(sessionKey(sid), now()) as UserRow | undefined;
   return row ?? null;
 }
 
@@ -193,7 +198,9 @@ const SUBJECT_PRIORITY: Record<string, number> = { user: 0, team: 1, workspace: 
  * prefix wins; within the same prefix user > team > workspace. With no
  * matching rule the workspace default applies (members edit, guests none).
  */
-export function effectiveLevel(db: DB, access: WorkspaceAccess, path: string): AclLevel {
+export function effectiveLevel(db: DB, access: WorkspaceAccess, rawPath: string): AclLevel {
+  // `Page.conflict-123.md` is a copy of `Page.md`: it carries the same permissions.
+  const path = rawPath.replace(/\.conflict-\d+(?=\.[^./]+$)/, "");
   const cached = access._permCache.get(path);
   if (cached) return cached;
 

@@ -12,3 +12,5 @@ web/.shots-tmp/
 macos/screenshots/
 macos/dist/
 macos/Concept.app/
+__pycache__/
+*.pyc

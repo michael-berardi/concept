@@ -342,7 +342,7 @@ struct PageEditorView: View {
 
     @ViewBuilder
     private var propertiesBlock: some View {
-        let rows = (doc?.entries ?? []).filter { !Self.hidden.contains($0.key) }
+        let rows = (doc?.entries ?? []).filter { !Self.hidden.contains($0.key) && $0.key != FrontmatterDocument.commentKey }
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, entry in

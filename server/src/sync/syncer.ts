@@ -6,6 +6,7 @@ import type { Config } from "../config.js";
 import {
   authedUrl,
   git,
+  gitBuffer,
   isRepo,
   listConflictCopies,
   preserveConflictCopy,
@@ -297,16 +298,16 @@ export class SyncManager {
               const unmerged = await git(vaultDir, ["diff", "--name-only", "--diff-filter=U"]);
               const files = unmerged.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
               for (const f of files) {
-                const ours = await git(vaultDir, ["show", `HEAD:${f}`]);
-                if (ours.code === 0) {
-                  const copy = preserveConflictCopy(vaultDir, f, ours.stdout);
+                const ours = await gitBuffer(vaultDir, ["show", `HEAD:${f}`]);
+                if (ours) {
+                  const copy = preserveConflictCopy(vaultDir, f, ours);
                   conflicts.push(copy);
                 }
                 // resolve by taking the remote (incoming) version in place
-                const theirs = await git(vaultDir, ["show", `FETCH_HEAD:${f}`]);
-                if (theirs.code === 0) {
+                const theirs = await gitBuffer(vaultDir, ["show", `FETCH_HEAD:${f}`]);
+                if (theirs) {
                   const fs = await import("node:fs");
-                  fs.writeFileSync(path.join(vaultDir, ...f.split("/")), theirs.stdout, "utf8");
+                  fs.writeFileSync(path.join(vaultDir, ...f.split("/")), theirs);
                 }
                 await git(vaultDir, ["add", "-A", "--", f]);
               }
