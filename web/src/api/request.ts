@@ -13,6 +13,7 @@ export class ApiError extends Error {
 
 export interface RequestOptions {
   json?: unknown;
+  text?: string;
   ifMatch?: string;
   query?: Record<string, string | number | undefined | null>;
 }
@@ -29,6 +30,7 @@ export async function request<T>(
   }
   const headers: Record<string, string> = {};
   if (opts.json !== undefined) headers["Content-Type"] = "application/json";
+  if (opts.text !== undefined) headers["Content-Type"] = "text/plain";
   if (opts.ifMatch) headers["If-Match"] = opts.ifMatch;
 
   let res: Response;
@@ -36,7 +38,7 @@ export async function request<T>(
     res = await fetch(url.pathname + url.search, {
       method,
       headers,
-      body: opts.json !== undefined ? JSON.stringify(opts.json) : undefined,
+      body: opts.text !== undefined ? opts.text : opts.json !== undefined ? JSON.stringify(opts.json) : undefined,
       credentials: "same-origin",
     });
   } catch (cause) {

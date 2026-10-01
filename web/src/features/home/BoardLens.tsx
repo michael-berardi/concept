@@ -26,7 +26,7 @@ export function BoardLens() {
         if (!on) return;
         setDatabases(dbs);
         if (!slug) {
-          const first = dbs.find((d) => d.views.some((v) => v.type === "board")) ?? dbs[0];
+          const first = dbs.find((d) => d.slug === "deals") ?? dbs.find((d) => d.views.some((v) => v.type === "board")) ?? dbs[0];
           if (first) setSlug(first.slug);
         }
       })
@@ -60,26 +60,15 @@ export function BoardLens() {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div className="db-toolbar">
-        <Icon name="board" size={15} className="faint" />
-        <strong style={{ fontSize: 13.5 }}>{db.name}</strong>
-        <span className="faint" style={{ fontSize: 12 }}>· {boardView?.name ?? "Board"}</span>
+        
         <div className="spacer" />
-        <select
-          className="input"
-          style={{ height: 28, width: 170 }}
-          value={slug}
-          aria-label="Board database"
-          onChange={(e) => {
-            setSlug(e.target.value);
-            setParams({ db: e.target.value });
-          }}
-        >
-          {databases.map((d) => (
-            <option key={d.slug} value={d.slug}>
+        <div className="board-tabs" role="tablist" aria-label="Board">
+          {databases.filter((d) => d.views.some((v) => v.type === "board")).map((d) => (
+            <button key={d.slug} role="tab" aria-selected={d.slug === slug} className={d.slug === slug ? "on" : ""} onClick={() => { setSlug(d.slug); setParams({ db: d.slug }); }}>
               {d.name}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
         <button className="tb-btn" onClick={() => nav(`/w/${ws}/db/${slug}?view=board`)}>
           Open full view
         </button>

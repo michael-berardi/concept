@@ -11,6 +11,7 @@ import { Placeholder } from "@tiptap/extensions";
 import { api } from "@/api";
 import type { SearchResult } from "@/api";
 import { mdToDoc, docToMd } from "@/lib/markdown";
+import { WikiLink, applyWikiMarks, wikiTargetAt } from "./wikiMark";
 import { Icon } from "@/ui/icons";
 
 /* ------------------------- Slash + wiki picker ------------------------- */
@@ -199,7 +200,7 @@ function SlashMenu({ editor, ws }: { editor: Editor; ws: string }) {
 /* ------------------------- Editor ------------------------- */
 
 export function BlockEditor({
-  value, onChange, ws, placeholder, readOnly, editorRef,
+  value, onChange, ws, placeholder, readOnly, editorRef, onOpenWiki,
 }: {
   value: string;
   onChange: (md: string) => void;
@@ -207,6 +208,7 @@ export function BlockEditor({
   placeholder?: string;
   readOnly?: boolean;
   editorRef?: (e: Editor | null) => void;
+  onOpenWiki?: (target: string) => void;
 }) {
   const lastEmitted = useRef(value);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -223,16 +225,29 @@ export function BlockEditor({
         TableRow,
         TableHeader,
         TableCell,
+        WikiLink,
         Placeholder.configure({ placeholder: placeholder ?? "Write, press / for blocks…" }),
       ],
       content: mdToDoc(value),
       editable: !readOnly,
+      editorProps: {
+        handleClick: (view, pos) => {
+          const target = wikiTargetAt(editor, pos);
+          if (target && onOpenWiki) {
+            onOpenWiki(target);
+            return true;
+          }
+          void view;
+          return false;
+        },
+      },
       onUpdate: ({ editor }) => {
         if (debounce.current) clearTimeout(debounce.current);
         debounce.current = setTimeout(() => {
           const md = docToMd(editor.getJSON() as never);
           lastEmitted.current = md;
           onChange(md);
+          applyWikiMarks(editor);
         }, 250);
       },
     },
@@ -249,7 +264,14 @@ export function BlockEditor({
     if (!editor || value === lastEmitted.current) return;
     lastEmitted.current = value;
     editor.commands.setContent(mdToDoc(value), { emitUpdate: false });
+    applyWikiMarks(editor);
   }, [value, editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const t = setTimeout(() => applyWikiMarks(editor), 60);
+    return () => clearTimeout(t);
+  }, [editor]);
 
   useEffect(
     () => () => {
@@ -268,8 +290,26 @@ export function BlockEditor({
   );
 }
 
+/** Floating format bar that appears above a text selection. */
 export function InlineToolbar({ editor }: { editor: Editor | null }) {
-  if (!editor) return null;
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!editor) return;
+    const f = () => force((n) => n + 1);
+    editor.on("selectionUpdate", f);
+    editor.on("transaction", f);
+    editor.on("blur", f);
+    return () => {
+      editor.off("selectionUpdate", f);
+      editor.off("transaction", f);
+      editor.off("blur", f);
+    };
+  }, [editor]);
+  if (!editor || editor.state.selection.empty || !editor.isFocused) return null;
+  const { from, to } = editor.state.selection;
+  const a = editor.view.coordsAtPos(from);
+  const b = editor.view.coordsAtPos(to);
+  const x = (a.left + b.right) / 2;
   const btn = (icon: string, label: string, active: boolean, run: () => void) => (
     <button
       key={label}
@@ -285,8 +325,8 @@ export function InlineToolbar({ editor }: { editor: Editor | null }) {
       <Icon name={icon} size={14} />
     </button>
   );
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+  return createPortal(
+    <div className="bubble" style={{ left: Math.max(120, Math.min(x, window.innerWidth - 120)), top: Math.min(a.top, b.top) - 8 }}>
       {btn("bold", "Bold", editor.isActive("bold"), () => editor.chain().focus().toggleBold().run())}
       {btn("italic", "Italic", editor.isActive("italic"), () => editor.chain().focus().toggleItalic().run())}
       {btn("strikethrough", "Strikethrough", editor.isActive("strike"), () => editor.chain().focus().toggleStrike().run())}
@@ -297,6 +337,7 @@ export function InlineToolbar({ editor }: { editor: Editor | null }) {
         else editor.chain().focus().unsetLink().run();
       })}
       {btn("task", "Task list", editor.isActive("taskList"), () => editor.chain().focus().toggleTaskList().run())}
-    </div>
+    </div>,
+    document.body,
   );
 }

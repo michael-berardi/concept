@@ -149,7 +149,7 @@ export function BoardView({ ws, db, viewId, rows, onRows, onOpenCard, onNewRow }
         ))}
         <button className="board-add" onClick={() => onNewRow(options[0]?.id ?? "")}>
           <Icon name="plus" size={14} />
-          <span className="hide-mobile">Add column view</span>
+          <span className="hide-mobile">Add card</span>
         </button>
       </div>
       <DragOverlay dropAnimation={null}>
@@ -296,11 +296,6 @@ function CardFace({
                 )}
               </span>
             ))}
-        </div>
-      ) : null}
-      {row.properties.owner ? (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <Avatar name={String(row.properties.owner)} size={20} />
         </div>
       ) : null}
     </article>

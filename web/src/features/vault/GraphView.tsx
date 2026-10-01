@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationNodeDatum } from "d3-force";
+import { forceX, forceY, forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type Simulation, type SimulationNodeDatum } from "d3-force";
 import { api } from "@/api";
 import type { GraphResult } from "@/api";
 import { ErrorState, Loading } from "@/ui/primitives";
@@ -31,7 +31,13 @@ export function GraphView({
 }) {
   const [data, setData] = useState<GraphResult | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [focus, setFocus] = useState<string | null>(path ? titleOf(path) : null);
+  const focusRef = useRef<string | null>(path ?? null);
+  const drawRef = useRef<() => void>(() => {});
+  const setFocus = (id: string | null) => {
+    if (focusRef.current === id) return;
+    focusRef.current = id;
+    drawRef.current();
+  };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simRef = useRef<Simulation<SimulationNodeDatum, undefined> | null>(null);
   const nodesRef = useRef<Node[]>([]);
@@ -70,6 +76,8 @@ export function GraphView({
           .id((d: unknown) => (d as Node).id)
           .distance(70),
       )
+      .force("x", forceX(w / 2).strength(0.06))
+      .force("y", forceY(h / 2).strength(0.06))
       .force("collide", forceCollide(14))
       .alpha(1);
     simRef.current = sim;
@@ -94,6 +102,7 @@ export function GraphView({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rect.width, rect.height);
       const c = color();
+      const focus = focusRef.current;
       ctx.lineWidth = 1;
       for (const e of edges as { source: Node; target: Node }[]) {
         if (e.source.x === undefined || e.target.x === undefined) continue;
@@ -124,13 +133,14 @@ export function GraphView({
         }
       }
     };
+    drawRef.current = draw;
     sim.on("tick", draw);
     draw();
     return () => {
       sim.stop();
       simRef.current = null;
     };
-  }, [data, focus]);
+  }, [data]);
 
   const hit = (clientX: number, clientY: number): Node | null => {
     const canvas = canvasRef.current;
@@ -185,6 +195,4 @@ export function GraphView({
   );
 }
 
-function titleOf(path: string): string {
-  return path.split("/").pop()?.replace(/\.md$/, "") ?? path;
-}
+

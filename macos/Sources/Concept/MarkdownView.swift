@@ -1,10 +1,13 @@
 import SwiftUI
+import ConceptKit
 
 /// Lightweight Markdown rendering for the reading toggle: headings, bold,
 /// italic, inline code, lists, task lists, quotes, rules, fenced code and
 /// wiki links. Deliberately simple, deterministic and self-contained.
 struct MarkdownView: View {
     @Environment(\.theme) private var theme
+    @Environment(AppModel.self) private var model
+    var index: VaultIndex? { model.index }
     let body_text: String
     let openPath: (String) -> Void
 
@@ -196,7 +199,14 @@ struct MarkdownView: View {
     /// Inline formatting: `code`, **bold**, *italic*, [[wiki links]] (tappable).
     @ViewBuilder
     func inline(_ text: String) -> some View {
-        RichText(text: text, onOpen: openPath)
+        RichText(text: text, onOpen: openPath, resolveLink: resolve)
+    }
+
+    func resolve(_ target: String) -> String? {
+        let resolved = index?.resolve(target) ?? nil
+        return resolved.flatMap { path in
+            index?.document(at: path).map { $0.title } ?? path
+        }
     }
 }
 
@@ -205,43 +215,62 @@ struct RichText: View {
     @Environment(\.theme) private var theme
     let text: String
     let onOpen: (String) -> Void
+    var resolveLink: ((String) -> String?)? = nil
 
-    static func attributed(_ text: String, theme: Theme) -> AttributedString {
-        var attributed = AttributedString(text)
+    static func attributed(_ text: String, theme: Theme,
+                           resolveLink: ((String) -> String?)? = nil) -> AttributedString {
+        var attributed = AttributedString("")
         attributed.font = AppFont.base
         attributed.foregroundColor = theme.text
-        for match in MarkdownView.matches(of: "`([^`]+)`", in: text) {
-            if let range = attributed.range(of: match.0) {
-                attributed[range].font = AppFont.mono(12.5)
-                attributed[range].foregroundColor = theme.accent
+        // Wiki links render as real inline links: brackets never appear; the
+        // label is the display text (after |) or the resolved title.
+        let linkPattern = "\\[\\[([^\\]|]+)(\\|([^\\]]*))?\\]\\]"
+        var cursor = text.startIndex
+        for match in MarkdownView.matches(of: linkPattern, in: text) {
+            guard let fullRange = text.range(of: match.0) else { continue }
+            if fullRange.lowerBound > cursor {
+                append(String(text[cursor..<fullRange.lowerBound]), into: &attributed)
             }
+            let target = match.1.trimmingCharacters(in: .whitespaces)
+            let display = (match.3 ?? "").trimmingCharacters(in: .whitespaces)
+            let label = display.isEmpty ? (resolveLink?(target) ?? target) : display
+            var run = AttributedString(label)
+            run.font = AppFont.base
+            run.foregroundColor = theme.accent
+            run.underlineStyle = .single
+            if let url = URL(string: "concept://open?p=" + (target.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? target)) {
+                run.link = url
+            }
+            attributed.append(run)
+            cursor = fullRange.upperBound
         }
-        for match in MarkdownView.matches(of: "\\*\\*([^*]+)\\*\\*", in: text) {
-            if let range = attributed.range(of: match.0) {
-                attributed[range].font = AppFont.base.bold()
-            }
-        }
-        for match in MarkdownView.matches(of: "(?<!\\*)\\*([^*]+)\\*(?!\\*)", in: text) {
-            if let range = attributed.range(of: match.0) {
-                attributed[range].font = AppFont.base.italic()
-            }
-        }
-        // Wiki links become concept://open?p=… URLs.
-        for match in MarkdownView.matches(of: "\\[\\[([^\\]|]+)(\\|[^\\]]*)?\\]\\]", in: text) {
-            if let range = attributed.range(of: match.0) {
-                let target = match.1.trimmingCharacters(in: .whitespaces)
-                if let url = URL(string: "concept://open?p=" + (target.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? target)) {
-                    attributed[range].link = url
-                    attributed[range].foregroundColor = theme.accent
-                    attributed[range].underlineStyle = .single
-                }
-            }
+        if cursor < text.endIndex {
+            append(String(text[cursor...]), into: &attributed)
         }
         return attributed
     }
 
+    /// Applies code/bold styling to a plain segment and appends it.
+    static func append(_ plain: String, into attributed: inout AttributedString) {
+        var segment = AttributedString(plain)
+        segment.font = AppFont.base
+        segment.foregroundColor = theme.text
+        for match in MarkdownView.matches(of: "`([^`]+)`", in: plain) {
+            if let range = segment.range(of: match.0) {
+                segment[range].font = AppFont.mono(12.5)
+                segment[range].foregroundColor = theme.accent
+            }
+        }
+        for match in MarkdownView.matches(of: "\\*\\*([^*]+)\\*\\*", in: plain) {
+            if let range = segment.range(of: match.0) {
+                segment[range].font = AppFont.base.bold()
+            }
+        }
+        attributed.append(segment)
+    }
+
     var body: some View {
-        Text(Self.attributed(text, theme: theme))
+        Text(Self.attributed(text, theme: theme, resolveLink: resolveLink))
             .environment(\.openURL, OpenURLAction { url in
                 guard url.scheme == "concept" else { return .discarded }
                 if let host = url.host(), let decoded = host.removingPercentEncoding {
