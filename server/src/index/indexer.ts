@@ -9,6 +9,8 @@ export interface Indexer {
   indexFile(wsId: string, vaultDir: string, relPath: string): void;
   removeFromIndex(wsId: string, relPath: string): void;
   reindexWorkspace(wsId: string, vaultDir: string): { indexed: number; removed: number };
+  /** Cheap stat-only pass: re-index files whose mtime/size changed, drop vanished ones. Returns changed paths. */
+  reconcile(wsId: string, vaultDir: string): string[];
   resolveAllLinks(wsId: string): void;
   resolveLinkTitle(wsId: string, title: string): string | null;
 }
@@ -120,6 +122,40 @@ export class SqliteIndexer implements Indexer {
     this.db.prepare(`DELETE FROM search WHERE ws = ? AND path = ?`).run(wsId, relPath);
     this.db.prepare(`DELETE FROM links WHERE workspace_id = ? AND src = ?`).run(wsId, relPath);
     this.db.prepare(`DELETE FROM tags WHERE workspace_id = ? AND path = ?`).run(wsId, relPath);
+  }
+
+  reconcile(wsId: string, vaultDir: string): string[] {
+    const changed: string[] = [];
+    const known = new Map(
+      (this.db.prepare(`SELECT path, mtime_ms, size FROM files WHERE workspace_id = ?`).all(wsId) as any[]).map((r) => [
+        r.path as string,
+        r,
+      ]),
+    );
+    const onDisk = new Set<string>();
+    for (const rel of listAllFiles(vaultDir)) {
+      if (!rel.toLowerCase().endsWith(".md")) continue;
+      onDisk.add(rel);
+      const row = known.get(rel);
+      let st;
+      try {
+        st = statSync(path.join(vaultDir, ...rel.split("/")));
+      } catch {
+        continue;
+      }
+      if (!row || Math.floor(st.mtimeMs) !== Number(row.mtime_ms) || st.size !== Number(row.size)) {
+        this.indexFile(wsId, vaultDir, rel);
+        changed.push(rel);
+      }
+    }
+    for (const p of known.keys()) {
+      if (!onDisk.has(p)) {
+        this.removeFromIndex(wsId, p);
+        changed.push(p);
+      }
+    }
+    if (changed.length) this.resolveAllLinks(wsId);
+    return changed;
   }
 
   reindexWorkspace(wsId: string, vaultDir: string): { indexed: number; removed: number } {
