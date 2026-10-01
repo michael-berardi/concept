@@ -3,6 +3,8 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 RUN corepack enable
+# pnpm must never wait for a TTY inside a build
+ENV CI=true
 COPY pnpm-workspace.yaml package.json ./
 
 # ---------- web (React 19 + Vite) ----------
@@ -31,6 +33,8 @@ ENV NODE_ENV=production \
     CONCEPT_DATA_DIR=/data \
     PORT=8787
 COPY --from=server /app/server/package.json ./server/package.json
+# pnpm links server/node_modules into the workspace store at /app/node_modules: copy both.
+COPY --from=server /app/node_modules ./node_modules
 COPY --from=server /app/server/node_modules ./server/node_modules
 COPY --from=server /app/server/dist ./server/dist
 COPY --from=web /app/server/public ./server/public
