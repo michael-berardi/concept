@@ -139,6 +139,9 @@ public struct FrontmatterEntry: Equatable, Sendable {
 /// `key: value` scalars, inline `[a, b]` arrays, quoted strings, comments
 /// after values, and indented block values (preserved verbatim as `.raw`).
 public struct FrontmatterDocument: Equatable, Sendable {
+    /// Key of entries that only carry a preserved comment line.
+    public static let commentKey = "\u{0}comment"
+
     public var entries: [FrontmatterEntry]
     public var body: String
 
@@ -212,6 +215,7 @@ public struct FrontmatterDocument: Equatable, Sendable {
         func quoteIfNeeded(_ s: String, inFlow: Bool = false) -> String {
             if s.isEmpty { return "\"\"" }
             var needsQuote = s.first == " " || s.last == " "
+                || s.contains("\n") || s.contains("\r") || s.contains("\t")
                 || s.contains(": ")
                 || s.contains("#") || s.contains("[") || s.contains("]")
                 || s.contains("{") || s.contains("}") || s.contains(",")
@@ -224,6 +228,9 @@ public struct FrontmatterDocument: Equatable, Sendable {
             let escaped = s
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "\\n")
+                .replacingOccurrences(of: "\r", with: "\\r")
+                .replacingOccurrences(of: "\t", with: "\\t")
             return "\"\(escaped)\""
         }
         switch value {
@@ -273,6 +280,10 @@ public struct FrontmatterDocument: Equatable, Sendable {
                 if blockBuffer.count > 1 {
                     // Indented continuation lines: preserve the whole block verbatim.
                     entries.append(FrontmatterEntry(key: key, value: .raw(blockBuffer.joined(separator: "\n")), raw: blockBuffer.joined(separator: "\n")))
+                } else if let only = blockBuffer.first, let colon = only.firstIndex(of: ":"),
+                          !only[only.index(after: colon)...].trimmingCharacters(in: .whitespaces).isEmpty {
+                    // `key: |` with no lines (yet): keep the line as written.
+                    entries.append(FrontmatterEntry(key: key, value: .raw(only), raw: only))
                 } else {
                     // `key:` with nothing following: a null value.
                     entries.append(FrontmatterEntry(key: key, value: .null, raw: blockBuffer.first))
@@ -301,6 +312,11 @@ public struct FrontmatterDocument: Equatable, Sendable {
                 blockBuffer.append(line)
                 continue
             }
+            if blockKey == nil, line.trimmingCharacters(in: .whitespaces).hasPrefix("#") {
+                // A standalone comment line is kept verbatim in place.
+                entries.append(FrontmatterEntry(key: FrontmatterDocument.commentKey, value: .null, raw: line))
+                continue
+            }
             guard let colon = line.firstIndex(of: ":") else {
                 // Continuation/stray line inside block value.
                 if blockKey != nil { blockBuffer.append(line) }
@@ -314,6 +330,13 @@ public struct FrontmatterDocument: Equatable, Sendable {
                 continue
             }
             let rawValue = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            if rawValue.range(of: "^[|>][0-9+-]*(\\s+#.*)?$", options: .regularExpression) != nil {
+                // Block scalar (`|` / `>`): the indented lines that follow belong to this key.
+                flushBlock()
+                blockKey = key
+                blockBuffer = [line]
+                continue
+            }
             // Split trailing comment (" # ...") outside of quotes.
             let parsed = Self.parseScalar(rawValue)
             if parsed.value == nil && parsed.commentOnly {
@@ -332,8 +355,8 @@ public struct FrontmatterDocument: Equatable, Sendable {
             // Unterminated frontmatter; treat whole text as body.
             return FrontmatterDocument(entries: [], body: text)
         }
+        // `components(separatedBy:)` keeps a trailing "" for a final newline, so join already restores it.
         var body = bodyLines.joined(separator: "\n")
-        if text.hasSuffix("\n") { body += "\n" }
         // Drop the single separator blank line the writer emits.
         if body.hasPrefix("\n") { body.removeFirst() }
         return FrontmatterDocument(entries: entries, body: body)
@@ -353,6 +376,7 @@ public struct FrontmatterDocument: Equatable, Sendable {
                     if let next = iterator.next() {
                         switch next {
                         case "n": out.append("\n")
+                        case "r": out.append("\r")
                         case "t": out.append("\t")
                         default: out.append(next)
                         }

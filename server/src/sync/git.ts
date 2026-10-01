@@ -40,6 +40,15 @@ export function validateBranch(branch: string): string {
   return b;
 }
 
+/** Raw bytes of `git <args>` (for binary-safe file contents). Null on failure. */
+export function gitBuffer(vaultDir: string, args: string[]): Promise<Buffer | null> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd: vaultDir, encoding: "buffer", maxBuffer: 256 * 1024 * 1024 }, (err, stdout) =>
+      resolve(err ? null : (stdout as Buffer)),
+    );
+  });
+}
+
 /** Strip credentials from text before it reaches logs or API responses. */
 export function redactSecrets(text: string): string {
   return text.replace(/(https?:\/\/)[^\s/@]+@/g, "$1***@");
@@ -116,11 +125,11 @@ export function conflictCopyPath(relPath: string, timestamp: number): string {
   return `${base}.conflict-${timestamp}${ext || ".md"}`;
 }
 
-export function preserveConflictCopy(vaultDir: string, relPath: string, content: string): string {
+export function preserveConflictCopy(vaultDir: string, relPath: string, content: string | Buffer): string {
   const dest = conflictCopyPath(relPath, Date.now());
   const abs = path.join(vaultDir, ...dest.split("/"));
   mkdirSync(path.dirname(abs), { recursive: true });
-  writeFileSync(abs, content, "utf8");
+  writeFileSync(abs, content);
   return dest;
 }
 

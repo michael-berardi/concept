@@ -50,7 +50,9 @@ export function startServer(): void {
 
   // Periodic sync for enabled workspaces (pull --rebase + push every 60 s).
   const syncTimer = setInterval(() => {
-    for (const ws of workspaces) {
+    // Re-read every tick so workspaces created after startup are covered too.
+    const current = db.prepare(`SELECT id, slug FROM workspaces`).all() as any[];
+    for (const ws of current) {
       const settings = sync.getSettings(ws.id);
       if (settings.enabled && settings.remoteUrl) {
         void sync.run(ws.slug, "system:timer");

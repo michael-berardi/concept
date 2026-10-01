@@ -66,8 +66,8 @@ public enum GitSync {
         let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
         let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        let out = String(data: outData, encoding: .utf8) ?? ""
-        let err = String(data: errData, encoding: .utf8) ?? ""
+        let out = redact(String(data: outData, encoding: .utf8) ?? "")
+        let err = redact(String(data: errData, encoding: .utf8) ?? "")
         return (out, err, process.terminationStatus)
     }
 
@@ -75,9 +75,23 @@ public enum GitSync {
     static func gitOK(_ arguments: [String], cwd: URL?, env: [String: String] = [:]) throws -> String {
         let result = try git(arguments, cwd: cwd, env: env)
         guard result.status == 0 else {
-            throw ConceptError.gitFailed(arguments.joined(separator: " "), status: result.status, stderr: result.stderr)
+            throw ConceptError.gitFailed(redact(arguments.joined(separator: " ")), status: result.status, stderr: result.stderr)
         }
         return result.stdout
+    }
+
+    /// A remote must never be parseable as a git option or a helper transport.
+    public static func validateRemote(_ remote: String) throws {
+        let r = remote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let helper = r.range(of: "^[A-Za-z0-9+.-]+::", options: .regularExpression) != nil
+        if r.isEmpty || r.hasPrefix("-") || helper || r.contains(" ") || r.rangeOfCharacter(from: .controlCharacters) != nil {
+            throw ConceptError.invalidPath(remote, cause: "remote must be https://…, ssh://…, user@host:path, file:// or an absolute path (no spaces, no leading '-')")
+        }
+    }
+
+    /// Credentials never reach logs, errors or the UI.
+    static func redact(_ text: String) -> String {
+        text.replacingOccurrences(of: "(https?://)[^\\s/@]+@", with: "$1***@", options: .regularExpression)
     }
 
     static func authorEnv(authorName: String?, authorEmail: String?) -> [String: String] {
@@ -107,6 +121,7 @@ public enum GitSync {
     }
 
     public static func setRemote(_ url: URL, remoteUrl: String) throws {
+        try validateRemote(remoteUrl)
         let remote = authenticatedRemote(remoteUrl, token: nil) // URL without token for config
         if try git(["remote", "get-url", "origin"], cwd: url).status == 0 {
             try gitOK(["remote", "set-url", "origin", remote], cwd: url)
@@ -168,13 +183,16 @@ public enum GitSync {
 
     @discardableResult
     public static func pullRebase(_ url: URL, branch: String, remoteUrl: String, token: String?) throws -> String {
+        try validateRemote(remoteUrl)
         let remote = authenticatedRemote(remoteUrl, token: token)
-        return try gitOK(["pull", "--rebase", remote, branch], cwd: url)
+        return try gitOK(["pull", "--rebase", "--", remote, branch], cwd: url)
     }
 
     public static func push(_ url: URL, branch: String, remoteUrl: String, token: String?) throws {
+        try validateRemote(remoteUrl)
         let remote = authenticatedRemote(remoteUrl, token: token)
-        try gitOK(["push", "-u", remote, branch], cwd: url)
+        // No `-u`: it would write the credentialed URL into .git/config.
+        try gitOK(["push", "--", remote, "HEAD:refs/heads/\(branch)"], cwd: url)
     }
 
     /// Full sync cycle. Throws `sync.conflict` only when conflict copies were
@@ -227,7 +245,7 @@ public enum GitSync {
         // Abort the stopped rebase to restore our committed state.
         _ = try? git(["rebase", "--abort"], cwd: url)
         let remote = authenticatedRemote(remoteUrl, token: token)
-        try gitOK(["fetch", remote, branch], cwd: url)
+        try gitOK(["fetch", "--", remote, branch], cwd: url)
 
         let mergeBase = try gitOK(["merge-base", "HEAD", "FETCH_HEAD"], cwd: url)
             .trimmingCharacters(in: .whitespacesAndNewlines)

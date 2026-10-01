@@ -14,6 +14,7 @@ import {
   clearSessionCookie,
   createApiToken,
   createSession,
+  sessionKey,
   effectiveLevel,
   getAccess,
   hashPassword,
@@ -250,22 +251,33 @@ export function createApp(deps: AppDeps): Hono<Env> {
     return c.json({ user: publicUser(user) }, 201);
   });
 
+  // Failed sign-ins per account: 8 in 10 minutes locks that account for the rest of the window.
+  const loginFailures = new Map<string, { count: number; since: number }>();
   app.post("/api/auth/login", async (c) => {
     const b = await jsonBody(c);
     const email = String(b.email ?? "").trim().toLowerCase();
+    const window = 10 * 60_000;
+    const seen = loginFailures.get(email);
+    if (seen && now() - seen.since < window && seen.count >= 8) {
+      throw new ApiError(429, "rate_limited", "Too many failed sign-ins for this account. Try again in a few minutes.");
+    }
     const user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as
       | (UserRow & { password_hash: string })
       | undefined;
     if (!user || !verifyPassword(String(b.password ?? ""), user.password_hash)) {
+      const fresh = seen && now() - seen.since < window ? seen : { count: 0, since: now() };
+      fresh.count++;
+      loginFailures.set(email, fresh);
       throw unauthorized("Email or password is incorrect");
     }
+    loginFailures.delete(email);
     setSessionCookie(c, createSession(db, user.id));
     return c.json({ user: publicUser(user) });
   });
 
   app.post("/api/auth/logout", (c) => {
     const session = getCookie(c, "concept_session");
-    if (session) db.prepare(`DELETE FROM sessions WHERE id = ?`).run(session);
+    if (session) db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionKey(session));
     clearSessionCookie(c);
     return c.json({ ok: true });
   });
@@ -452,6 +464,13 @@ export function createApp(deps: AppDeps): Hono<Env> {
     if (!["owner", "admin", "member", "guest"].includes(role)) {
       throw badRequest(`Invalid role '${role}'`, "invalid_role");
     }
+    const targetRow = db
+      .prepare(`SELECT role FROM members WHERE workspace_id = ? AND user_id = ?`)
+      .get(access.workspaceId, c.req.param("userId")) as { role: string } | undefined;
+    // Only an owner can hand out or take away ownership.
+    if ((role === "owner" || targetRow?.role === "owner") && access.role !== "owner" && !access.isInstanceAdmin) {
+      throw forbidden("Only an owner can change ownership");
+    }
     const r = db
       .prepare(`UPDATE members SET role = ? WHERE workspace_id = ? AND user_id = ?`)
       .run(role, access.workspaceId, c.req.param("userId"));
@@ -463,6 +482,12 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const access = c.get("access");
     requireWsAdmin(access);
     const target = c.req.param("userId");
+    const targetRole = db
+      .prepare(`SELECT role FROM members WHERE workspace_id = ? AND user_id = ?`)
+      .get(access.workspaceId, target) as { role: string } | undefined;
+    if (targetRole?.role === "owner" && access.role !== "owner" && !access.isInstanceAdmin) {
+      throw forbidden("Only an owner can remove an owner");
+    }
     const r = db
       .prepare(`DELETE FROM members WHERE workspace_id = ? AND user_id = ?`)
       .run(access.workspaceId, target);
@@ -1418,6 +1443,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // =====================================================================
   app.get("/api/w/:ws/sync", (c) => {
     const access = c.get("access");
+    requireWsAdmin2(access);
     return c.json(sync.getSettings(access.workspaceId));
   });
 
@@ -1446,6 +1472,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
 
   app.get("/api/w/:ws/sync/status", (c) => {
     const access = c.get("access");
+    requireWsAdmin2(access);
     return c.json(sync.getStatus(access.slug));
   });
 

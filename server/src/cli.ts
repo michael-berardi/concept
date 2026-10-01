@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { openDb } from "./db.js";
@@ -40,7 +41,8 @@ async function main(): Promise<number> {
 
     case "seed": {
       const email = process.env.CONCEPT_ADMIN_EMAIL ?? "admin@concept.local";
-      const password = process.env.CONCEPT_ADMIN_PASSWORD ?? "concept-admin";
+      const generated = !process.env.CONCEPT_ADMIN_PASSWORD;
+      const password = process.env.CONCEPT_ADMIN_PASSWORD ?? randomBytes(12).toString("base64url");
       let user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as any;
       if (!user) {
         const id = shortId("usr");
@@ -48,7 +50,7 @@ async function main(): Promise<number> {
           `INSERT INTO users (id, email, name, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?, 1, ?)`,
         ).run(id, email, "Admin", hashPassword(password), now());
         user = { id, email, name: "Admin" };
-        console.log(`Created admin user ${email} (password: ${password})`);
+        console.log(`Created admin user ${email}${generated ? ` with the generated password: ${password}` : " (password from CONCEPT_ADMIN_PASSWORD)"}`);
       } else {
         console.log(`Admin user ${email} already exists`);
       }

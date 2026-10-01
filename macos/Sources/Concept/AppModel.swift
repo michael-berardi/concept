@@ -126,6 +126,9 @@ final class AppModel {
     }
 
     func openVault(at url: URL) {
+        // Unsaved text belongs to the vault it was typed in: save it there, then forget it.
+        for path in Array(drafts.keys) { saveDraft(for: path) }
+        drafts.removeAll()
         do {
             let vault = try Vault(url: url)
             self.vault = vault
@@ -345,6 +348,10 @@ final class AppModel {
         guard let vault else { return }
         let clean = newTitle.trimmingCharacters(in: .whitespaces)
         guard !clean.isEmpty else { return }
+        guard !clean.contains("/"), !clean.contains("\\"), clean != "..", clean != "." else {
+            lastError = ("path.invalid", "A title cannot contain slashes; use the sidebar to move pages between folders")
+            return
+        }
         do {
             var doc = try vault.readDocument(relativePath: path)
             doc.set("title", clean)
@@ -354,12 +361,14 @@ final class AppModel {
             if target == path {
                 try vault.writeDocument(relativePath: path, document: doc)
             } else {
-                guard !vault.fileManager.fileExists(atPath: vault.absoluteURL(target).path) else {
+                let targetURL = try vault.confinedURL(target)
+                guard !vault.fileManager.fileExists(atPath: targetURL.path) else {
                     lastError = ("path.exists", "A file named '\(clean)' already exists in this folder")
                     return
                 }
-                let source = vault.absoluteURL(path)
-                try vault.fileManager.moveItem(at: source, to: vault.absoluteURL(target))
+                let source = try vault.confinedURL(path)
+                try vault.fileManager.moveItem(at: source, to: targetURL)
+                if let draft = drafts.removeValue(forKey: path) { drafts[target] = draft }
                 try vault.writeDocument(relativePath: target, document: doc)
                 if let idx = openTabs.firstIndex(where: { $0.path == path }) {
                     openTabs[idx] = OpenTab(path: target)
@@ -383,11 +392,13 @@ final class AppModel {
         do {
             let name = (path as NSString).lastPathComponent
             let target = directory + "/" + name
-            guard !vault.fileManager.fileExists(atPath: vault.absoluteURL(target).path) else {
+            let targetURL = try vault.confinedURL(target)
+            guard !vault.fileManager.fileExists(atPath: targetURL.path) else {
                 lastError = ("path.exists", "A file named '\(name)' already exists in \(directory)")
                 return
             }
-            try vault.fileManager.moveItem(at: vault.absoluteURL(path), to: vault.absoluteURL(target))
+            try vault.fileManager.moveItem(at: try vault.confinedURL(path), to: targetURL)
+            if let draft = drafts.removeValue(forKey: path) { drafts[target] = draft }
             if let idx = openTabs.firstIndex(where: { $0.path == path }) {
                 openTabs[idx] = OpenTab(path: target)
             }

@@ -34,7 +34,7 @@ struct VaultTests {
         #expect(record.path.hasPrefix("Data/deals/"))
         #expect(record.recordType == "deal")
         #expect(record.status == "Inbox")
-        #expect(record.rank == "a0")
+        #expect(record.rank == "4")
         #expect(record.archived == false)
         #expect(record.properties["value"]?.asInt == 12000)
 
