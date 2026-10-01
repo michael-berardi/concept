@@ -59,6 +59,7 @@ export async function makeApp(opts?: { watchDebounceMs?: number; openSignup?: bo
       },
     },
     cfg.watchDebounceMs,
+    2000, // safety-net rescan, short so a dropped file event never fails a test
   );
   const app = createApp({ cfg, db, engine, indexer, watcher, bus, sync });
   const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });

@@ -15,6 +15,7 @@ interface WatchedWorkspace {
   watcher: FSWatcher;
   pending: Map<string, ReturnType<typeof setTimeout>>;
   fullRescanTimer: ReturnType<typeof setTimeout> | null;
+  safetyNet: ReturnType<typeof setInterval>;
 }
 
 /**
@@ -29,6 +30,7 @@ export class VaultWatcher {
     private indexer: Indexer,
     private hooks: WatcherHooks,
     private debounceMs = 300,
+    private safetyNetMs = 15_000,
   ) {}
 
   watchWorkspace(wsId: string, slug: string, vaultDir: string): void {
@@ -46,6 +48,17 @@ export class VaultWatcher {
     watcher.on("error", (err) => {
       console.error(`[watcher] error on ${slug}: ${err.message}`);
     });
+    // File-system events can be dropped (just after a watch starts, under load, on some
+    // network volumes). A stat-only pass picks up whatever they missed.
+    const safetyNet = setInterval(() => {
+      try {
+        const changed = this.indexer.reconcile(wsId, vaultDir);
+        if (changed.length) this.hooks.onExternalChange(slug, changed);
+      } catch (err) {
+        console.error(`[watcher] reconcile failed for ${slug}: ${(err as Error).message}`);
+      }
+    }, this.safetyNetMs);
+    safetyNet.unref?.();
     this.watched.set(slug, {
       wsId,
       slug,
@@ -53,6 +66,7 @@ export class VaultWatcher {
       watcher,
       pending: new Map(),
       fullRescanTimer: null,
+      safetyNet,
     });
   }
 
@@ -61,6 +75,7 @@ export class VaultWatcher {
     if (!w) return;
     for (const t of w.pending.values()) clearTimeout(t);
     if (w.fullRescanTimer) clearTimeout(w.fullRescanTimer);
+    clearInterval(w.safetyNet);
     try {
       w.watcher.close();
     } catch {
