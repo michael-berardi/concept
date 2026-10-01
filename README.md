@@ -42,7 +42,7 @@ Open <http://localhost:8787>. The first account you create becomes the admin and
 
 ## Use the Mac app
 
-Build it with `macos/scripts/bundle.sh`, or download `Concept-<version>.zip` from [Releases](https://github.com/michael-berardi/concept/releases). The app is signed ad hoc, so macOS asks you to confirm the first launch: right-click the app and choose Open.
+Build it with `macos/scripts/bundle.sh`, or download `Concept-<version>.zip` from [Releases](https://github.com/michael-berardi/concept/releases). The app is signed ad hoc, so macOS asks you to confirm the first launch: right-click the app and choose Open. Unzip it in Finder (double-click); command-line `unzip` can break the signature.
 
 Open any folder of Markdown, or create a vault from a template. It watches the folder, so edits from Retex, Obsidian or Git appear straight away.
 
