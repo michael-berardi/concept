@@ -151,10 +151,6 @@ export function BoardView({ ws, db, viewId, rows, onRows, onOpenCard, onNewRow }
             onNewRow={onNewRow}
           />
         ))}
-        <button className="board-add" onClick={() => onNewRow(options[0]?.id ?? "")}>
-          <Icon name="plus" size={14} />
-          <span className="hide-mobile">Add card</span>
-        </button>
       </div>
       <DragOverlay dropAnimation={null}>
         {active ? (

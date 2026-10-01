@@ -1,3 +1,4 @@
+process.env.CONCEPT_ALLOW_FILE_REMOTES = "1";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

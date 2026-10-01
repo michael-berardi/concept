@@ -1,0 +1,145 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Client, makeApp, type TestEnv } from "./helpers.js";
+import { createZip } from "../src/zip.js";
+
+let env: TestEnv;
+let admin: Client;
+let member: Client;
+let slug: string;
+
+before(async () => {
+  env = await makeApp({ openSignup: true });
+  admin = new Client(env.baseUrl);
+  await admin.register("admin@sec.test");
+  const ws = await admin.post("/api/workspaces", { name: "SecCo" });
+  slug = ws.json.slug;
+  member = new Client(env.baseUrl);
+  const inv = await admin.post(`/api/w/${slug}/invites`, { role: "member" });
+  await member.register("member@sec.test", "password-123", inv.json.token);
+  await admin.post(`/api/w/${slug}/pages`, { title: "Secret", body: "top secret" });
+  const me = await member.get("/api/me");
+  await admin.put(`/api/w/${slug}/acl`, {
+    path: "Pages/Secret.md",
+    subjectType: "user",
+    subjectId: me.json.user.id,
+    level: "none",
+  });
+});
+
+after(async () => {
+  await env.close();
+});
+
+test("ACL cannot be bypassed with an alternate spelling of the path", async () => {
+  assert.equal((await member.get(`/api/w/${slug}/pages/Pages/Secret.md`)).status, 403);
+  for (const spelling of ["Pages%5CSecret.md", "Pages%2FSecret.md", "%2FPages/Secret.md"]) {
+    const res = await member.get(`/api/w/${slug}/pages/${spelling}`);
+    assert.notEqual(res.status, 200, `spelling ${spelling} leaked the page`);
+    assert.ok(!res.text.includes("top secret"), `spelling ${spelling} leaked the body`);
+  }
+  const viaVault = await member.get(`/api/w/${slug}/vault/file/Pages%5CSecret.md`);
+  assert.ok(!viaVault.text.includes("top secret"));
+  const put = await member.put(`/api/w/${slug}/pages/Pages%5CSecret.md`, { body: "pwned" });
+  assert.notEqual(put.status, 200);
+});
+
+test("attachments reject path-like ids", async () => {
+  const res = await member.get(`/api/w/${slug}/attachments/..%2FPages%2FSecret.md`);
+  assert.equal(res.status, 400);
+  assert.ok(!res.text.includes("top secret"));
+});
+
+test("reserved and non-content paths are not reachable as pages or files", async () => {
+  for (const p of [".git/config", "Pages/.git/config", ".trash/x.md", ".retex/state"]) {
+    const res = await admin.get(`/api/w/${slug}/pages/${p}`);
+    assert.ok([400, 404].includes(res.status), `${p} -> ${res.status}`);
+    const put = await admin.put(`/api/w/${slug}/vault/file/${p}`, "x");
+    assert.equal(put.status, 400, `${p} write -> ${put.status}`);
+  }
+});
+
+test("a symlink inside the vault cannot lead outside it", async () => {
+  const outside = mkdtempSync(path.join(tmpdir(), "concept-outside-"));
+  writeFileSync(path.join(outside, "x.txt"), "outside data");
+  const vault = env.engine.vaultDir(slug);
+  symlinkSync(outside, path.join(vault, "Pages", "Escape"));
+  const read = await admin.get(`/api/w/${slug}/vault/file/Pages/Escape/x.txt`);
+  assert.ok(!read.text.includes("outside data"), "read escaped the vault");
+  const write = await admin.put(`/api/w/${slug}/vault/file/Pages/Escape/new.txt`, "pwn");
+  assert.notEqual(write.status, 200, "write escaped the vault");
+});
+
+test("zip import skips reserved entries however they are spelled", async () => {
+  const zip = createZip([
+    { path: "./.git/config", data: Buffer.from("evil") },
+    { path: "Pages/../../escape.md", data: Buffer.from("evil") },
+    { path: "Pages/Imported.md", data: Buffer.from("# ok") },
+  ]);
+  const form = new FormData();
+  form.set("file", new File([new Uint8Array(zip)], "x.zip"));
+  const res = await fetch(`${env.baseUrl}/api/w/${slug}/import`, {
+    method: "POST",
+    headers: { cookie: admin.cookie! },
+    body: form,
+  });
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(json.imported, 1);
+  assert.equal(json.skipped, 2);
+});
+
+test("sync refuses remotes and branches that git would parse as options", async () => {
+  for (const remoteUrl of ["--upload-pack=touch /tmp/pwn", "ext::sh -c id", "-oProxyCommand=id", "http://example.invalid/r.git", "https://host/a b"]) {
+    const res = await admin.put(`/api/w/${slug}/sync`, { remoteUrl, enabled: false });
+    assert.equal(res.status, 400, `${remoteUrl} accepted`);
+    assert.equal(res.json.error.code, "invalid_remote");
+  }
+  const badBranch = await admin.put(`/api/w/${slug}/sync`, { remoteUrl: "https://example.invalid/r.git", branch: "--x", enabled: false });
+  assert.equal(badBranch.status, 400);
+});
+
+test("a team of another workspace cannot be modified", async () => {
+  const other = new Client(env.baseUrl);
+  await other.register("other-admin@sec.test");
+  const ows = await other.post("/api/workspaces", { name: "OtherCo" });
+  const victimTeam = await admin.post(`/api/w/${slug}/teams`, { name: "Victims" });
+  const meAdmin = await admin.get("/api/me");
+  await admin.put(`/api/w/${slug}/teams/${victimTeam.json.id}/members/${meAdmin.json.user.id}`);
+  const res = await other.delete(`/api/w/${ows.json.slug}/teams/${victimTeam.json.id}/members/${meAdmin.json.user.id}`);
+  assert.equal(res.status, 404);
+  const teams = await admin.get(`/api/w/${slug}/teams`);
+  assert.equal(teams.json.teams.find((t: any) => t.id === victimTeam.json.id).memberIds.length, 1);
+});
+
+test("SSE hides events about pages the member may not see", async () => {
+  const ctl = new AbortController();
+  const res = await fetch(`${env.baseUrl}/api/w/${slug}/events`, { headers: { cookie: member.cookie! }, signal: ctl.signal });
+  const reader = res.body!.getReader();
+  const chunks: string[] = [];
+  const pump = (async () => {
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        chunks.push(new TextDecoder().decode(value));
+      }
+    } catch {
+      /* aborted */
+    }
+  })();
+  await new Promise((r) => setTimeout(r, 300));
+  const page = await admin.get(`/api/w/${slug}/pages/Pages/Secret.md`);
+  await admin.put(`/api/w/${slug}/pages/Pages/Secret.md`, { body: "edited" }, { "if-match": page.json.contentHash });
+  await admin.post(`/api/w/${slug}/pages`, { title: "Public note", body: "hi" });
+  await new Promise((r) => setTimeout(r, 1500));
+  ctl.abort();
+  await pump;
+  const all = chunks.join("");
+  assert.ok(!all.includes("Secret.md"), "member saw an event for a hidden page");
+  assert.ok(all.includes("Public note"), "member should see events for visible pages");
+  assert.ok(!all.includes("admin@sec.test"), "event leaked an email address");
+});

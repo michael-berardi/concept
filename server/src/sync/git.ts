@@ -1,3 +1,4 @@
+import { badRequest } from "../errors.js";
 import { execFile } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -6,6 +7,42 @@ export interface GitResult {
   code: number;
   stdout: string;
   stderr: string;
+}
+
+/**
+ * Remotes an admin may configure. Leading `-`, whitespace and helper
+ * transports (`ext::`, `fd::`) are refused so a remote can never be parsed as
+ * a git option or run a command. `file://` and local paths are off unless
+ * CONCEPT_ALLOW_FILE_REMOTES=1.
+ */
+export function validateRemoteUrl(url: string): string {
+  const u = String(url).trim();
+  const ok =
+    /^https:\/\/[^\s\x00-\x1f]+$/.test(u) ||
+    /^ssh:\/\/[^\s\x00-\x1f]+$/.test(u) ||
+    /^[\w.-]+@[\w.-]+:[^\s\x00-\x1f]+$/.test(u) ||
+    (process.env.CONCEPT_ALLOW_FILE_REMOTES === "1" && /^file:\/\/\/[^\s\x00-\x1f]+$/.test(u));
+  if (!ok || u.startsWith("-")) {
+    throw badRequest(
+      "Remote URL must be https://…, ssh://… or user@host:path (no spaces, no leading '-')",
+      "invalid_remote",
+    );
+  }
+  return u;
+}
+
+/** Branch names: git ref-name subset, never starting with '-' or containing '..'. */
+export function validateBranch(branch: string): string {
+  const b = String(branch).trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,100}$/.test(b) || b.includes("..") || b.endsWith("/") || b.endsWith(".lock")) {
+    throw badRequest("Branch must be a plain git branch name such as main", "invalid_branch");
+  }
+  return b;
+}
+
+/** Strip credentials from text before it reaches logs or API responses. */
+export function redactSecrets(text: string): string {
+  return text.replace(/(https?:\/\/)[^\s/@]+@/g, "$1***@");
 }
 
 export function git(
@@ -24,10 +61,19 @@ export function git(
     execFile(
       "git",
       finalArgs,
-      { cwd: vaultDir, timeout: opts.timeoutMs ?? 120_000, maxBuffer: 32 * 1024 * 1024 },
+      {
+        cwd: vaultDir,
+        timeout: opts.timeoutMs ?? 120_000,
+        maxBuffer: 32 * 1024 * 1024,
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_ALLOW_PROTOCOL: process.env.CONCEPT_ALLOW_FILE_REMOTES === "1" ? "https:ssh:file" : "https:ssh",
+        },
+      },
       (err, stdout, stderr) => {
         const code = err ? ((err as any).code as number) ?? 1 : 0;
-        resolve({ code, stdout: stdout?.toString() ?? "", stderr: stderr?.toString() ?? "" });
+        resolve({ code, stdout: redactSecrets(stdout?.toString() ?? ""), stderr: redactSecrets(stderr?.toString() ?? "") });
       },
     );
   });
