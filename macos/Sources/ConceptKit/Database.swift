@@ -20,6 +20,16 @@ public struct PropertyOption: Codable, Equatable, Sendable {
         self.id = id
         self.color = color
     }
+
+    /// The server omits `color`; derive a stable one so schemas written by
+    /// either side decode.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        color = try c.decodeIfPresent(String.self, forKey: .color) ?? "gray"
+    }
+
+    enum CodingKeys: String, CodingKey { case id, color }
 }
 
 public struct Property: Codable, Equatable, Sendable {

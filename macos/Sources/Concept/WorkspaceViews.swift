@@ -9,37 +9,80 @@ struct WorkspaceSidebar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                SectionLabel("Pages")
-                if let snapshot = model.snapshot {
-                    PageTree(pages: snapshot.pages, level: 0)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
+                quickRow("Search", icon: .search, shortcut: "⌘O") { model.showQuickSwitcher = true }
+                quickRow("Home", icon: .doc, shortcut: nil, active: model.selectedPage == nil && model.selectedDatabase == nil && !model.showGraph) {
+                    model.selectedPage = nil; model.selectedDatabase = nil; model.showGraph = false
                 }
-                SectionLabel("Databases").padding(.top, 10)
-                ForEach(model.databases, id: \.slug) { db in
-                    DatabaseRow(db: db)
+                quickRow("Graph", icon: .graph, shortcut: "⌘G", active: model.showGraph) {
+                    model.graphScope = model.selectedPage == nil ? .global : .local
+                    model.showGraph.toggle()
                 }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(model.databases, id: \.slug) { db in
+                        DatabaseRow(db: db)
+                    }
+                    if !model.databases.isEmpty { Color.clear.frame(height: 8) }
+                    if let snapshot = model.snapshot {
+                        PageTree(pages: snapshot.pages, level: 0)
+                    }
+                    Button { model.newPage(title: "Untitled") } label: {
+                        HStack(spacing: 6) {
+                            Icon(name: .plus, size: 13)
+                            Text("New page").font(AppFont.small)
+                        }
+                        .foregroundStyle(theme.textTertiary)
+                        .padding(.horizontal, 6).padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+            }
+            Hairline()
+            HStack {
                 Menu {
                     ForEach(DatabaseTemplateProvider.all) { template in
                         Button(template.name) { model.newDatabase(from: template) }
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Icon(name: .plus, size: 13)
+                        Icon(name: .database, size: 13)
                         Text("New database").font(AppFont.small)
                     }
                     .foregroundStyle(theme.textSecondary)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 4)
+                .fixedSize()
+                Spacer()
             }
-            .padding(10)
+            .padding(.horizontal, 14).padding(.vertical, 8)
         }
-        .frame(minWidth: 212, idealWidth: 224, maxWidth: 250)
+        .frame(minWidth: 220, idealWidth: 236, maxWidth: 260)
         .background(theme.surface)
+    }
+
+    private func quickRow(_ title: String, icon: Icon.Name, shortcut: String?, active: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Icon(name: icon, size: 13)
+                Text(title).font(AppFont.small)
+                Spacer()
+                if let shortcut { Text(shortcut).font(AppFont.micro).foregroundStyle(theme.textTertiary) }
+            }
+            .foregroundStyle(active ? theme.text : theme.textSecondary)
+            .padding(.horizontal, 6).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 5).fill(active ? theme.selection : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -172,7 +215,10 @@ struct DatabaseRow: View {
     var body: some View {
         Button {
             model.selectedDatabase = db.slug
-            model.mode = .board
+            if model.mode == .workspace {
+                model.selectedPage = nil
+                model.showGraph = false
+            }
         } label: {
             HStack(spacing: 6) {
                 Icon(name: .database, size: 13)
@@ -180,11 +226,11 @@ struct DatabaseRow: View {
                 Spacer()
                 Badge(text: db.recordType, color: theme.textTertiary)
             }
-            .foregroundStyle(model.selectedDatabase == db.slug && model.mode != .workspace ? theme.text : theme.textSecondary)
+            .foregroundStyle(model.selectedDatabase == db.slug && (model.mode == .board || model.selectedPage == nil) ? theme.text : theme.textSecondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 3.5)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 4).fill(model.selectedDatabase == db.slug && model.mode != .workspace ? theme.selection : .clear))
+            .background(RoundedRectangle(cornerRadius: 4).fill(model.selectedDatabase == db.slug && (model.mode == .board || model.selectedPage == nil) ? theme.selection : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -197,67 +243,136 @@ struct PageEditorView: View {
     @Environment(\.theme) private var theme
     @Environment(AppModel.self) private var model
     let path: String
+    @State private var title = ""
+    @State private var saveTask: Task<Void, Never>?
+    @FocusState private var titleFocus: Bool
+
+    private var doc: FrontmatterDocument? { try? model.vault?.readDocument(relativePath: path) }
+    private static let hidden: Set<String> = ["title", "type", "rank", "created", "updated", "archived", "cover"]
 
     var body: some View {
         VStack(spacing: 0) {
-            let doc = (try? model.vault?.readDocument(relativePath: path)) ?? nil
-            let title = doc?.string("title") ?? ((path as NSString).lastPathComponent as NSString).deletingPathExtension
-            HStack {
-                Text(title).font(AppFont.title).foregroundStyle(theme.text).lineLimit(1)
-                Spacer()
-                HStack(spacing: 0) {
-                    segmentButton("Source", active: !model.readingMode) { model.readingMode = false }
-                    segmentButton("Reading", active: model.readingMode) { model.readingMode = true }
-                }
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.hairline, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            Hairline()
-            if model.readingMode {
-                ScrollView {
-                    MarkdownView(body_text: model.draft(for: path)) { target in
-                        if let resolved = model.index?.resolve(target) {
-                            model.open(path: resolved)
+            header
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    TextField("Untitled", text: $title)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 38, weight: .bold))
+                        .tracking(-0.8)
+                        .foregroundStyle(theme.text)
+                        .focused($titleFocus)
+                        .onSubmit { model.rename(path: path, to: title) }
+                        .padding(.bottom, 14)
+                    propertiesBlock
+                    if model.readingMode {
+                        MarkdownView(body_text: model.draft(for: path)) { target in
+                            if let resolved = model.index?.resolve(target) { model.open(path: resolved) }
                         }
+                    } else {
+                        TextEditor(text: Binding(
+                            get: { model.draft(for: path) },
+                            set: { newValue in
+                                model.setDraft(newValue, for: path)
+                                scheduleSave()
+                            }))
+                            .font(AppFont.mono(13))
+                            .scrollContentBackground(.hidden)
+                            .colorScheme(model.theme.isDark ? .dark : .light)
+                            .frame(minHeight: 420)
                     }
-                    .padding(24)
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .frame(maxWidth: .infinity)
                 }
-            } else {
-                TextEditor(text: Binding(
-                    get: { model.draft(for: path) },
-                    set: { model.setDraft($0, for: path) }))
-                    .font(AppFont.mono(13))
-                    .scrollContentBackground(.hidden)
-                    .colorScheme(model.theme.isDark ? .dark : .light)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
+                .padding(.horizontal, 48)
+                .padding(.top, 28)
+                .padding(.bottom, 120)
+                .frame(maxWidth: 800, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
         }
         .background(theme.canvas)
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    model.saveDraft(for: path)
-                } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                }
-                .keyboardShortcut("s", modifiers: .command)
-            }
+        .onAppear {
+            title = currentTitle
+            DispatchQueue.main.async { titleFocus = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { titleFocus = false }
+        }
+        .onChange(of: path) { _, _ in title = currentTitle }
+        .onDisappear { model.saveDraft(for: path) }
+    }
+
+    private var currentTitle: String {
+        doc?.string("title") ?? ((path as NSString).lastPathComponent as NSString).deletingPathExtension
+    }
+
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if !Task.isCancelled { model.saveDraft(for: path) }
         }
     }
 
+    private var header: some View {
+        HStack(spacing: 8) {
+            let parts = path.replacingOccurrences(of: ".md", with: "").split(separator: "/").map(String.init).filter { $0 != "Pages" }
+            ForEach(Array(parts.dropLast().enumerated()), id: \.offset) { _, part in
+                Text(part).font(AppFont.small).foregroundStyle(theme.textTertiary)
+                Icon(name: .chevronRight, size: 9, color: theme.textTertiary)
+            }
+            Text(parts.last ?? "").font(AppFont.small).foregroundStyle(theme.textSecondary).lineLimit(1)
+            Spacer()
+            if path.hasPrefix("Data/") {
+                Button("Open card") { model.openCard(path: path) }
+                    .buttonStyle(.plain).font(AppFont.small).foregroundStyle(theme.accent)
+            }
+            HStack(spacing: 0) {
+                modeButton("Source", active: !model.readingMode) { model.readingMode = false }
+                modeButton("Reading", active: model.readingMode) { model.readingMode = true }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            Button { model.showRightPanel.toggle() } label: {
+                Icon(name: .columns, size: 14, color: model.showRightPanel ? theme.text : theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Side panel (⌥⌘B)")
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 38)
+        .overlay(alignment: .bottom) { Hairline() }
+    }
+
     @ViewBuilder
-    private func segmentButton(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
+    private var propertiesBlock: some View {
+        let rows = (doc?.entries ?? []).filter { !Self.hidden.contains($0.key) }
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, entry in
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text(entry.key)
+                            .font(AppFont.small)
+                            .foregroundStyle(theme.textTertiary)
+                            .frame(width: 140, alignment: .leading)
+                        Text(entry.value.displayString.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: ""))
+                            .font(AppFont.small)
+                            .foregroundStyle(theme.text)
+                            .textSelection(.enabled)
+                        Spacer()
+                    }
+                    .frame(minHeight: 30)
+                }
+            }
+            .padding(.bottom, 14)
+            .overlay(alignment: .bottom) { Hairline() }
+            .padding(.bottom, 20)
+        }
+    }
+
+    private func modeButton(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
                 .font(AppFont.small)
                 .foregroundStyle(active ? theme.text : theme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 4)
                 .background(active ? theme.surfaceRaised : .clear)
         }
         .buttonStyle(.plain)
@@ -419,7 +534,6 @@ struct BoardCard: View {
                     .foregroundStyle(theme.textSecondary)
                 }
                 Spacer()
-                Badge(text: "record", color: theme.textTertiary)
             }
         }
         .padding(10)
@@ -440,9 +554,9 @@ struct BoardCard: View {
         }
         .contextMenu {
             Button("Open as card") { model.openCard(path: card.path) }
-            Button("Show in Vault") {
+            Button("Open as Page") {
+                model.mode = .workspace
                 model.open(path: card.path)
-                model.mode = .vault
             }
             Button("Archive") {
                 model.updateRecord(card.path, properties: ["archived": .bool(true)])

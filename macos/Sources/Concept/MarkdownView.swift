@@ -20,6 +20,7 @@ struct MarkdownView: View {
             case quote([String])
             case code(String)
             case rule
+            case table(header: [String], rows: [[String]])
         }
         let kind: Kind
     }
@@ -79,6 +80,25 @@ struct MarkdownView: View {
                     i += 1
                 }
                 blocks.append(Block(kind: .quote(quote)))
+                continue
+            }
+            if trimmed.hasPrefix("|"), i + 1 < lines.count,
+               lines[i + 1].trimmingCharacters(in: .whitespaces).range(of: "^\\|?[ :|-]+\\|[ :|-]*$", options: .regularExpression) != nil {
+                flushParagraph()
+                func cells(_ l: String) -> [String] {
+                    var parts = l.trimmingCharacters(in: .whitespaces).components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+                    if parts.first == "" { parts.removeFirst() }
+                    if parts.last == "" { parts.removeLast() }
+                    return parts
+                }
+                let header = cells(trimmed)
+                i += 2
+                var rows: [[String]] = []
+                while i < lines.count, lines[i].trimmingCharacters(in: .whitespaces).hasPrefix("|") {
+                    rows.append(cells(lines[i]))
+                    i += 1
+                }
+                blocks.append(Block(kind: .table(header: header, rows: rows)))
                 continue
             }
             let isBullet = trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
@@ -193,7 +213,30 @@ struct MarkdownView: View {
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.hairline, lineWidth: 1))
         case .rule:
             Hairline().padding(.vertical, 4)
+        case .table(let header, let rows):
+            VStack(spacing: 0) {
+                tableRow(header, bold: true)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                    Hairline()
+                    tableRow(r, bold: false)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
+    }
+
+    private func tableRow(_ cells: [String], bold: Bool) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, c in
+                inline(c)
+                    .font(bold ? AppFont.small.weight(.semibold) : AppFont.small)
+                    .foregroundStyle(theme.text)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(bold ? theme.surfaceRaised : .clear)
     }
 
     /// Inline formatting: `code`, **bold**, *italic*, [[wiki links]] (tappable).
@@ -211,6 +254,8 @@ struct MarkdownView: View {
 }
 
 /// Renders inline Markdown (code, bold, italic) plus tappable wiki links.
+/// Wiki-link brackets never show: the label is the alias after `|` or the
+/// resolved page title.
 struct RichText: View {
     @Environment(\.theme) private var theme
     let text: String
@@ -220,22 +265,17 @@ struct RichText: View {
     static func attributed(_ text: String, theme: Theme,
                            resolveLink: ((String) -> String?)? = nil) -> AttributedString {
         var attributed = AttributedString("")
-        attributed.font = AppFont.base
-        attributed.foregroundColor = theme.text
-        // Wiki links render as real inline links: brackets never appear; the
-        // label is the display text (after |) or the resolved title.
-        let linkPattern = "\\[\\[([^\\]|]+)(\\|([^\\]]*))?\\]\\]"
+        let linkPattern = "\\[\\[([^\\]|]+)(?:\\|([^\\]]*))?\\]\\]"
         var cursor = text.startIndex
         for match in MarkdownView.matches(of: linkPattern, in: text) {
-            guard let fullRange = text.range(of: match.0) else { continue }
+            guard let fullRange = text.range(of: match.full, range: cursor..<text.endIndex) else { continue }
             if fullRange.lowerBound > cursor {
-                append(String(text[cursor..<fullRange.lowerBound]), into: &attributed)
+                appendPlain(String(text[cursor..<fullRange.lowerBound]), theme: theme, into: &attributed)
             }
-            let target = match.1.trimmingCharacters(in: .whitespaces)
-            let display = (match.3 ?? "").trimmingCharacters(in: .whitespaces)
-            let label = display.isEmpty ? (resolveLink?(target) ?? target) : display
+            let target = match.group1.trimmingCharacters(in: .whitespaces)
+            let alias = (match.group2 ?? "").trimmingCharacters(in: .whitespaces)
+            let label = alias.isEmpty ? (resolveLink?(target) ?? target) : alias
             var run = AttributedString(label)
-            run.font = AppFont.base
             run.foregroundColor = theme.accent
             run.underlineStyle = .single
             if let url = URL(string: "concept://open?p=" + (target.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? target)) {
@@ -245,25 +285,24 @@ struct RichText: View {
             cursor = fullRange.upperBound
         }
         if cursor < text.endIndex {
-            append(String(text[cursor...]), into: &attributed)
+            appendPlain(String(text[cursor...]), theme: theme, into: &attributed)
         }
         return attributed
     }
 
-    /// Applies code/bold styling to a plain segment and appends it.
-    static func append(_ plain: String, into attributed: inout AttributedString) {
+    /// Applies code/bold/italic styling to a plain segment and appends it.
+    static func appendPlain(_ plain: String, theme: Theme, into attributed: inout AttributedString) {
         var segment = AttributedString(plain)
-        segment.font = AppFont.base
         segment.foregroundColor = theme.text
         for match in MarkdownView.matches(of: "`([^`]+)`", in: plain) {
-            if let range = segment.range(of: match.0) {
+            if let range = segment.range(of: match.full) {
                 segment[range].font = AppFont.mono(12.5)
                 segment[range].foregroundColor = theme.accent
             }
         }
         for match in MarkdownView.matches(of: "\\*\\*([^*]+)\\*\\*", in: plain) {
-            if let range = segment.range(of: match.0) {
-                segment[range].font = AppFont.base.bold()
+            if let range = segment.range(of: match.full) {
+                segment[range].inlinePresentationIntent = .stronglyEmphasized
             }
         }
         attributed.append(segment)
@@ -272,17 +311,13 @@ struct RichText: View {
     var body: some View {
         Text(Self.attributed(text, theme: theme, resolveLink: resolveLink))
             .environment(\.openURL, OpenURLAction { url in
-                guard url.scheme == "concept" else { return .discarded }
-                if let host = url.host(), let decoded = host.removingPercentEncoding {
-                    onOpen(decoded)
-                    return .handled
+                guard url.scheme == "concept",
+                      let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                      let value = components.queryItems?.first(where: { $0.name == "p" })?.value else {
+                    return .discarded
                 }
-                if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                   let value = components.queryItems?.first(where: { $0.name == "p" })?.value {
-                    onOpen(value)
-                    return .handled
-                }
-                return .discarded
+                onOpen(value)
+                return .handled
             })
     }
 }
@@ -306,13 +341,17 @@ extension MarkdownView {
 }
 
 extension MarkdownView {
-    static func matches(of pattern: String, in text: String) -> [(String, String)] {
+    struct Match { let full: String; let group1: String; let group2: String? }
+
+    static func matches(of pattern: String, in text: String) -> [Match] {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(text.startIndex..., in: text)
         return regex.matches(in: text, range: range).compactMap { match in
             guard match.numberOfRanges > 1, let full = Range(match.range, in: text),
-                  let group = Range(match.range(at: 1), in: text) else { return nil }
-            return (String(text[full]), String(text[group]))
+                  let g1 = Range(match.range(at: 1), in: text) else { return nil }
+            var g2: String?
+            if match.numberOfRanges > 2, let r = Range(match.range(at: 2), in: text) { g2 = String(text[r]) }
+            return Match(full: String(text[full]), group1: String(text[g1]), group2: g2)
         }
     }
 }

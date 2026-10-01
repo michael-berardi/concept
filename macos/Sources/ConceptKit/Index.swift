@@ -347,9 +347,9 @@ public struct Graph: Sendable {
 /// Deterministic (fixed seed, no randomness) so tests can assert convergence.
 public enum ForceLayout {
     public static func run(nodes: [GraphNode], edges: [GraphEdge],
-                           iterations: Int = 180, repulsion: Double = 5200,
-                           springLength: Double = 90, springStrength: Double = 0.015,
-                           centerPull: Double = 0.004, damping: Double = 0.86) -> [CGPoint] {
+                           iterations: Int = 300, repulsion: Double = 11000,
+                           springLength: Double = 120, springStrength: Double = 0.012,
+                           centerPull: Double = 0.0006, damping: Double = 0.86) -> [CGPoint] {
         var pos: [(Double, Double)] = nodes.map { ($0.x, $0.y) }
         let idx = Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($1.id, $0) })
         var vel = [(Double, Double)](repeating: (0, 0), count: nodes.count)
