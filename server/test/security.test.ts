@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Client, makeApp, type TestEnv } from "./helpers.js";
@@ -10,6 +10,7 @@ let env: TestEnv;
 let admin: Client;
 let member: Client;
 let slug: string;
+const scratch: string[] = [];
 
 before(async () => {
   env = await makeApp({ openSignup: true });
@@ -32,6 +33,7 @@ before(async () => {
 
 after(async () => {
   await env.close();
+  for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
 });
 
 test("ACL cannot be bypassed with an alternate spelling of the path", async () => {
@@ -64,6 +66,7 @@ test("reserved and non-content paths are not reachable as pages or files", async
 
 test("a symlink inside the vault cannot lead outside it", async () => {
   const outside = mkdtempSync(path.join(tmpdir(), "concept-outside-"));
+  scratch.push(outside);
   writeFileSync(path.join(outside, "x.txt"), "outside data");
   const vault = env.engine.vaultDir(slug);
   symlinkSync(outside, path.join(vault, "Pages", "Escape"));
