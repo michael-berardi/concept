@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+server/public
+macos
+docs
+.git
+**/.DS_Store
+**/*.log
+data
