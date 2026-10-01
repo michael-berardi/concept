@@ -21,6 +21,8 @@ export function CardModal({
   const { toast } = useToast();
   const [draft, setDraft] = useState<Record<string, unknown>>(row.properties);
   const [body, setBody] = useState(row.body ?? "");
+  // List payloads carry no body: never treat "not loaded" as "empty", or a save would erase the description.
+  const [bodyReady, setBodyReady] = useState(row.body !== undefined);
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
   const [commentText, setCommentText] = useState("");
@@ -28,6 +30,24 @@ export function CardModal({
   const [err, setErr] = useState<unknown>(null);
   const [pane, setPane] = useState<"comments" | "activity">("comments");
   const commentInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (bodyReady) return;
+    let on = true;
+    api
+      .page(ws, row.path)
+      .then((p) => {
+        if (!on) return;
+        setBody(p.body);
+        setHash(p.contentHash);
+        setBodyReady(true);
+      })
+      .catch((e) => on && setErr(e));
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws, row.path]);
 
   useEffect(() => {
     Promise.all([api.comments(ws, row.path), api.activity(ws, row.path, 12)])
@@ -51,6 +71,7 @@ export function CardModal({
   };
 
   const saveBody = async (md: string) => {
+    if (!bodyReady) return;
     setBody(md);
     try {
       const updated = await api.updateRow(ws, db.slug, row.id, { body: md }, hash);
@@ -75,9 +96,13 @@ export function CardModal({
   const addComment = async () => {
     const text = commentText.trim();
     if (!text) return;
-    setCommentText("");
-    const c = await api.addComment(ws, row.path, text);
-    setComments((cs) => [...(cs ?? []), c]);
+    try {
+      const c = await api.addComment(ws, row.path, text);
+      setComments((cs) => [...(cs ?? []), c]);
+      setCommentText("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not post the comment", "error"); // keeps the text
+    }
   };
 
   const checklist = bodyTaskList(body);
@@ -110,7 +135,11 @@ export function CardModal({
 
           <Section label="Description">
             <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "4px 14px", background: "var(--surface)" }}>
-              <BlockEditor value={body} ws={ws} onChange={saveBody} placeholder="Add a description…" />
+              {bodyReady ? (
+                <BlockEditor value={body} ws={ws} onChange={saveBody} placeholder="Add a description…" />
+              ) : (
+                <div className="skeleton" style={{ height: 60, margin: "10px 0" }} />
+              )}
             </div>
           </Section>
 

@@ -48,7 +48,7 @@ export interface Api {
   createPage(ws: string, input: { title: string; parent?: string; body?: string; icon?: string }): Promise<PageRecord>;
   updatePage(ws: string, path: string, patch: { title?: string; properties?: Record<string, unknown>; body?: string; icon?: string }, ifMatch?: string): Promise<PageRecord>;
   deletePage(ws: string, path: string): Promise<void>;
-  movePage(ws: string, path: string, parent: string | null): Promise<void>;
+  movePage(ws: string, path: string, parent: string | null): Promise<string>;
 
   databases(ws: string): Promise<Database[]>;
   database(ws: string, slug: string): Promise<Database>;

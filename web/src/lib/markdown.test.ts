@@ -106,3 +106,23 @@ describe("robustness", () => {
     expect(() => docToMd({ type: "paragraph" } as unknown as Doc)).toThrow(/doc_expected/);
   });
 });
+
+describe("round-trip regressions", () => {
+  const rt = (md: string) => docToMd(mdToDoc(md) as never);
+  it("keeps a four-backtick fence that contains a three-backtick fence", () => {
+    const md = "````md\n```\ninside\n```\n````";
+    expect(rt(md)).toBe(md);
+  });
+  it("keeps nested task lists", () => {
+    const md = "- [ ] parent\n  - [x] child";
+    expect(rt(md)).toBe(md);
+  });
+  it("keeps wiki links with underscores and aliases in tables", () => {
+    expect(rt("See [[my_page]] now")).toBe("See [[my_page]] now");
+    const md = "| A | B |\n| --- | --- |\n| [[Target|Alias]] | x |";
+    const once = rt(md);
+    expect(rt(once)).toBe(once); // stable
+    const table = mdToDoc(md).content[0];
+    expect((table.content as { content: unknown[] }[])[1].content).toHaveLength(2); // alias pipe is not a column
+  });
+});

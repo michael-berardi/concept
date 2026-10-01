@@ -52,6 +52,19 @@ function normalizeDb(d: any): Database {
     properties: (d.properties ?? []).map((p: any) => ({ ...p, options: p.options ? p.options.map((o: any) => ({ ...o, name: o.name ?? o.id })) : p.options })),
   };
 }
+function normalizeSync(r: any): SyncStatus {
+  const map: Record<string, SyncStatus["state"]> = {
+    ok: "clean", clean: "clean", syncing: "syncing", conflict: "conflict", error: "error", skipped: "disabled", ahead: "ahead", behind: "behind",
+  };
+  const state = r.enabled === false ? "disabled" : map[String(r.lastStatus ?? "")] ?? "clean";
+  return {
+    state,
+    lastSyncAt: iso(r.lastSyncAt),
+    lastCommit: r.lastCommit ?? undefined,
+    message: r.lastMessage ?? undefined,
+    conflicts: (r.conflicts ?? []).map((c: any) => (typeof c === "string" ? { path: c, savedAs: c } : c)),
+  };
+}
 function toVault(n: any): VaultFile {
   return { path: n.path, title: n.name, type: n.type === "folder" ? "dir" : "file", size: n.size, children: (n.children ?? []).map(toVault) };
 }
@@ -174,8 +187,9 @@ export class RealApi implements Api {
   deletePage(ws: string, path: string) {
     return request("DELETE", `/api/w/${enc(ws)}/pages/${path.split("/").map(enc).join("/")}`, {}, this.base).then(() => undefined);
   }
-  movePage(ws: string, path: string, parent: string | null) {
-    return request("POST", `/api/w/${enc(ws)}/pages/${path.split("/").map(enc).join("/")}/move`, { json: { parent } }, this.base).then(() => undefined);
+  async movePage(ws: string, path: string, parent: string | null) {
+    const p = await request<any>("POST", `/api/w/${enc(ws)}/pages/${encPath(path)}/move`, { json: { parent } }, this.base);
+    return String(p?.path ?? path);
   }
 
   async databases(ws: string) {
@@ -239,11 +253,11 @@ export class RealApi implements Api {
   putSyncConfig(ws: string, cfg: Parameters<Api["putSyncConfig"]>[1]) {
     return request<SyncConfig>("PUT", `/api/w/${enc(ws)}/sync`, { json: cfg }, this.base);
   }
-  syncRun(ws: string) {
-    return request<SyncStatus>("POST", `/api/w/${enc(ws)}/sync/run`, { json: {} }, this.base);
+  async syncRun(ws: string) {
+    return normalizeSync(await request<any>("POST", `/api/w/${enc(ws)}/sync/run`, { json: {} }, this.base));
   }
-  syncStatus(ws: string) {
-    return request<SyncStatus>("GET", `/api/w/${enc(ws)}/sync/status`, {}, this.base);
+  async syncStatus(ws: string) {
+    return normalizeSync(await request<any>("GET", `/api/w/${enc(ws)}/sync/status`, {}, this.base));
   }
 
   async vaultTree(ws: string) {

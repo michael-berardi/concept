@@ -105,9 +105,10 @@ export function BoardView({ ws, db, viewId, rows, onRows, onOpenCard, onNewRow }
       const rank = rankBetween(prev?.rank ?? null, after?.rank ?? null);
       optimistic = next.map((r) => (r.id === row.id ? { ...r, rank } : r));
     } catch (err) {
-      if (!((err as RankError).code === "rank_overflow")) throw err;
-      const ranks = recomputeRanks(next.map((r) => r.id));
-      optimistic = next.map((r) => ({ ...r, rank: ranks[r.id] }));
+      // Non-canonical ranks (written by Retex or an editor) or overflow: show the
+      // new order now; the server is authoritative and resequences the column.
+      void (err as RankError);
+      optimistic = next;
     }
 
     // Snapshot for optimistic UI
