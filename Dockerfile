@@ -33,7 +33,6 @@ ENV NODE_ENV=production \
 COPY --from=server /app/server/package.json ./server/package.json
 COPY --from=server /app/server/node_modules ./server/node_modules
 COPY --from=server /app/server/dist ./server/dist
-COPY --from=server /app/server/public ./server/public
 COPY --from=web /app/server/public ./server/public
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node

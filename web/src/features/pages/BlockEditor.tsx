@@ -269,9 +269,18 @@ export function BlockEditor({
     return () => clearTimeout(t);
   }, [editor]);
 
+  // Leaving with an edit still waiting for the debounce: emit it now instead of dropping it.
+  const editorForCleanup = useRef<Editor | null>(null);
+  editorForCleanup.current = editor ?? null;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   useEffect(
     () => () => {
-      if (debounce.current) clearTimeout(debounce.current);
+      if (!debounce.current) return;
+      clearTimeout(debounce.current);
+      debounce.current = null;
+      const ed = editorForCleanup.current;
+      if (ed && !ed.isDestroyed) onChangeRef.current(docToMd(ed.getJSON() as never));
     },
     [],
   );

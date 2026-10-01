@@ -37,6 +37,7 @@ import {
   PAGES_DIR,
   absPath,
   assertApiPath,
+  canonicalCase,
   assertContentPath,
   listAllFiles,
   readFileIfExists,
@@ -133,7 +134,29 @@ export function createApp(deps: AppDeps): Hono<Env> {
     }
     // Canonicalise once, before any ACL check or file access, so `\\`, `//`,
     // leading `/` and `.`/`..` can never differ between check and use.
-    return safeRelPath(joined);
+    return canonicalCase(engine.vaultDir(c.get("access").slug), safeRelPath(joined));
+  };
+
+  /**
+   * Moving or deleting a folder (or a page with sub-pages) touches every file inside:
+   * the caller needs edit on each of them, and rules under it must not be orphaned
+   * by anyone but a workspace admin.
+   */
+  const requireTreeEdit = (access: WorkspaceAccess, rel: string): void => {
+    const prefixes = [rel, rel.replace(/\.md$/, "")].map((p) => `${p}/`);
+    const vault = engine.vaultDir(access.slug);
+    const inside = listAllFiles(vault).filter((f) => prefixes.some((pre) => f.startsWith(pre)));
+    for (const f of inside) requireLevel(access, db, f, "edit");
+    const ruled = db
+      .prepare(`SELECT 1 FROM acls WHERE workspace_id = ? AND (path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\') LIMIT 1`)
+      .get(
+        access.workspaceId,
+        `${rel.replace(/[\\%_]/g, (ch) => `\\${ch}`)}/%`,
+        `${rel.replace(/\.md$/, "").replace(/[\\%_]/g, (ch) => `\\${ch}`)}/%`,
+      );
+    if (ruled && access.role !== "owner" && access.role !== "admin" && !access.isInstanceAdmin) {
+      throw forbidden("Permission rules exist inside this folder; only a workspace admin can move or delete it");
+    }
   };
 
   const jsonBody = async (c: any): Promise<Record<string, any>> => {
@@ -675,15 +698,16 @@ export function createApp(deps: AppDeps): Hono<Env> {
       level: r.level,
       createdAt: r.created_at,
     }));
+    const admin = access.role === "owner" || access.role === "admin" || access.isInstanceAdmin;
     if (qPath !== undefined && qPath !== "") {
       const safe = safeRelPath(qPath);
       return c.json({
         path: safe,
         level: effectiveLevel(db, access, safe),
-        rules: rules.filter((r) => safe === r.path || safe.startsWith(`${r.path}/`) || r.path === ""),
+        rules: admin ? rules.filter((r) => safe === r.path || safe.startsWith(`${r.path}/`) || r.path === "") : [],
       });
     }
-    return c.json({ rules });
+    return c.json({ rules: admin ? rules : [] });
   });
 
   app.put("/api/w/:ws/acl", async (c) => {
@@ -794,7 +818,11 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const p = wildcard(c, `/api/w/${access.slug}/pages`);
     assertContentPath(p);
     requireLevel(access, db, p, "view");
-    return c.json(engine.getPage({ id: access.workspaceId, slug: access.slug }, p, effectiveLevel(db, access, p)));
+    const payload = engine.getPage({ id: access.workspaceId, slug: access.slug }, p, effectiveLevel(db, access, p));
+    payload.backlinks = (payload.backlinks ?? []).filter((b: any) =>
+      levelAtLeast(effectiveLevel(db, access, typeof b === "string" ? b : b.path), "view"),
+    );
+    return c.json(payload);
   });
 
   app.put("/api/w/:ws/pages/*", async (c) => {
@@ -823,6 +851,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const p = wildcard(c, `/api/w/${access.slug}/pages`);
     assertContentPath(p);
     requireLevel(access, db, p, "edit");
+    requireTreeEdit(access, p);
     const res = engine.deletePage({ id: access.workspaceId, slug: access.slug }, p, actorLabel(c));
     logActivity(access.workspaceId, p, c.get("user"), "page.deleted", `trashed to ${res.trashedTo}`);
     return c.json(res);
@@ -839,6 +868,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       assertContentPath(p);
       if (parent) assertApiPath(parent);
       requireLevel(access, db, p, "edit");
+      requireTreeEdit(access, p);
       requireLevel(access, db, parent ?? PAGES_DIR, "edit");
       const page = engine.movePage(
         { id: access.workspaceId, slug: access.slug },
@@ -1203,6 +1233,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const p = wildcard(c, `/api/w/${access.slug}/vault/file`);
     assertApiPath(p, true);
     requireLevel(access, db, p, "edit");
+    requireTreeEdit(access, p);
     const res = engine.deleteVaultFile({ id: access.workspaceId, slug: access.slug }, p, actorLabel(c));
     logActivity(access.workspaceId, p, c.get("user"), "vault.file.deleted", `trashed to ${res.trashedTo}`);
     return c.json(res);
@@ -1217,6 +1248,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     assertApiPath(to, true);
     requireLevel(access, db, from, "edit");
     requireLevel(access, db, to, "edit");
+    requireTreeEdit(access, from);
     return c.json(engine.moveVaultEntry({ id: access.workspaceId, slug: access.slug }, from, to, actorLabel(c)));
   });
 
@@ -1485,7 +1517,8 @@ function ApiError2(status: number, code: string, message: string): ApiError {
 
 function actorLabel(c: { get(key: "user"): UserRow }): string {
   const user = c.get("user");
-  return `${user.name} <${user.email}>`;
+  // A display name must not be able to fake the "<email>" half of a git author.
+  return `${user.name.replace(/[<>\r\n]/g, "")} <${user.email}>`;
 }
 
 function contentTypeFor(p: string): string {

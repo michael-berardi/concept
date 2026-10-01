@@ -26,7 +26,11 @@ export function CardModal({
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
   const [commentText, setCommentText] = useState("");
-  const [hash, setHash] = useState(row.contentHash);
+  const hashRef = useRef(row.contentHash);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const setHash = (h: string) => {
+    hashRef.current = h;
+  };
   const [err, setErr] = useState<unknown>(null);
   const [pane, setPane] = useState<"comments" | "activity">("comments");
   const commentInput = useRef<HTMLInputElement>(null);
@@ -58,11 +62,18 @@ export function CardModal({
       .catch((e) => setErr(e));
   }, [ws, row.path]);
 
+  // Saves are serialised so each one carries the hash the previous one produced.
+  const enqueue = <T,>(fn: () => Promise<T>): Promise<T> => {
+    const run = queue.current.then(fn, fn);
+    queue.current = run.catch(() => undefined);
+    return run;
+  };
+
   const commit = async (key: string, value: unknown) => {
     const next = { ...draft, [key]: value };
     setDraft(next);
     try {
-      const updated = await api.updateRow(ws, db.slug, row.id, { properties: next }, hash);
+      const updated = await enqueue(() => api.updateRow(ws, db.slug, row.id, { properties: next }, hashRef.current));
       setHash(updated.contentHash);
       onChanged(updated);
     } catch (e) {
@@ -74,7 +85,7 @@ export function CardModal({
     if (!bodyReady) return;
     setBody(md);
     try {
-      const updated = await api.updateRow(ws, db.slug, row.id, { body: md }, hash);
+      const updated = await enqueue(() => api.updateRow(ws, db.slug, row.id, { body: md }, hashRef.current));
       setHash(updated.contentHash);
       onChanged(updated);
     } catch (e) {

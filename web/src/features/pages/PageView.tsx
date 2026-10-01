@@ -105,6 +105,7 @@ export function PageView() {
         touchedRef.current = false;
       }
       if (version.current === savedVersion.current && !force) return chain.current;
+      if (!force && !hashes.current.get(target)) return chain.current; // nothing loaded yet: never write blind
       const snap = { ...latest.current };
       const v = version.current;
       const extra = Object.fromEntries(Object.entries(snap.props).filter(([k]) => !HIDDEN.has(k)));
