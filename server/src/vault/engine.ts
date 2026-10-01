@@ -872,6 +872,7 @@ interface ApiErrorLike {
 
 export interface TreeNode {
   name: string;
+  title?: string;
   path: string;
   type: "page";
   archived: boolean;
@@ -925,6 +926,7 @@ export function buildTree(metas: FileMeta[]): TreeNode[] {
   }
   interface MutableNode {
     name: string;
+    title?: string;
     path: string;
     isDir: boolean;
     children: MutableNode[];
@@ -950,6 +952,7 @@ export function buildTree(metas: FileMeta[]): TreeNode[] {
     const parent = dir && dir.startsWith(`${PAGES_DIR}`) && dirs.has(dir) ? ensureDir(dir) : root;
     parent.children.push({
       name: (m.path.split("/").pop() as string).replace(/\.md$/, ""),
+      title: m.title ?? undefined,
       path: m.path,
       isDir: false,
       children: [],
@@ -957,6 +960,7 @@ export function buildTree(metas: FileMeta[]): TreeNode[] {
   }
   const convert = (n: MutableNode): TreeNode => ({
     name: n.name,
+    title: n.title,
     path: n.path,
     type: "page" as const,
     archived: false,

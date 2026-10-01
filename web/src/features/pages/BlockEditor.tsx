@@ -11,7 +11,7 @@ import { Placeholder } from "@tiptap/extensions";
 import { api } from "@/api";
 import type { SearchResult } from "@/api";
 import { mdToDoc, docToMd } from "@/lib/markdown";
-import { WikiLink, applyWikiMarks, wikiTargetAt } from "./wikiMark";
+import { WikiLink, applyWikiMarks } from "./wikiMark";
 import { Icon } from "@/ui/icons";
 
 /* ------------------------- Slash + wiki picker ------------------------- */
@@ -211,6 +211,8 @@ export function BlockEditor({
   onOpenWiki?: (target: string) => void;
 }) {
   const lastEmitted = useRef(value);
+  const onOpenWikiRef = useRef(onOpenWiki);
+  onOpenWikiRef.current = onOpenWiki;
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor(
@@ -230,17 +232,6 @@ export function BlockEditor({
       ],
       content: mdToDoc(value),
       editable: !readOnly,
-      editorProps: {
-        handleClick: (view, pos) => {
-          const target = wikiTargetAt(editor, pos);
-          if (target && onOpenWiki) {
-            onOpenWiki(target);
-            return true;
-          }
-          void view;
-          return false;
-        },
-      },
       onUpdate: ({ editor }) => {
         if (debounce.current) clearTimeout(debounce.current);
         debounce.current = setTimeout(() => {
@@ -283,7 +274,18 @@ export function BlockEditor({
   if (!editor) return null;
 
   return (
-    <div className="block-editor" data-readonly={readOnly || undefined}>
+    <div
+      className="block-editor"
+      data-readonly={readOnly || undefined}
+      onClick={(e) => {
+        const el = (e.target as HTMLElement).closest?.(".wiki-link") as HTMLElement | null;
+        const target = el?.dataset.wiki;
+        if (target && onOpenWikiRef.current && !(e.metaKey && false)) {
+          e.preventDefault();
+          onOpenWikiRef.current(target);
+        }
+      }}
+    >
       <EditorContent editor={editor} />
       <SlashMenu editor={editor} ws={ws} />
     </div>
