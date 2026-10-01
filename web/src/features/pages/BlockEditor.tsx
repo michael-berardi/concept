@@ -200,7 +200,7 @@ function SlashMenu({ editor, ws }: { editor: Editor; ws: string }) {
 /* ------------------------- Editor ------------------------- */
 
 export function BlockEditor({
-  value, onChange, ws, placeholder, readOnly, editorRef, onOpenWiki,
+  value, onChange, ws, placeholder, readOnly, editorRef, onOpenWiki, onTouch,
 }: {
   value: string;
   onChange: (md: string) => void;
@@ -209,8 +209,12 @@ export function BlockEditor({
   readOnly?: boolean;
   editorRef?: (e: Editor | null) => void;
   onOpenWiki?: (target: string) => void;
+  /** Fires immediately on every edit (before the debounced onChange). */
+  onTouch?: () => void;
 }) {
   const lastEmitted = useRef(value);
+  const onTouchRef = useRef(onTouch);
+  onTouchRef.current = onTouch;
   const onOpenWikiRef = useRef(onOpenWiki);
   onOpenWikiRef.current = onOpenWiki;
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,6 +237,7 @@ export function BlockEditor({
       content: mdToDoc(value),
       editable: !readOnly,
       onUpdate: ({ editor }) => {
+        onTouchRef.current?.();
         if (debounce.current) clearTimeout(debounce.current);
         debounce.current = setTimeout(() => {
           const md = docToMd(editor.getJSON() as never);

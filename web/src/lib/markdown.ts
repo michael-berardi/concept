@@ -79,7 +79,11 @@ function inlineToMd(nodes: (InlineNode | BlockNode)[] | undefined): string {
 
 /** Escape characters that would otherwise parse as markup. */
 function escapeText(s: string): string {
-  return s.replace(/[\\`*_~]/g, (c) => "\\" + c);
+  // [[wiki links]] are kept verbatim so `[[my_page]]` stays a valid link target.
+  return s
+    .split(/(\[\[[^\]]*\]\])/)
+    .map((part, i) => (i % 2 === 1 ? part : part.replace(/[\\`*_~]/g, (c) => "\\" + c)))
+    .join("");
 }
 
 function blockToMd(node: BlockNode, indent: string, orderedDepth: number): string {
@@ -94,8 +98,8 @@ function blockToMd(node: BlockNode, indent: string, orderedDepth: number): strin
     case "codeBlock": {
       const lang = String(node.attrs?.language ?? "");
       const code = (node.content as InlineNode[] | undefined)?.map((n) => n.text ?? "").join("") ?? "";
-      const longest = Math.max(0, ...(code.match(/^`{3,}/gm) ?? []).map((m) => m.length));
-      const fence = "`".repeat(Math.max(3, longest));
+      const longest = Math.max(0, ...(code.match(/^\s*`{3,}/gm) ?? []).map((m) => m.trim().length));
+      const fence = "`".repeat(Math.max(3, longest + 1));
       return fence + lang + "\n" + code + (code.endsWith("\n") || code === "" ? "" : "\n") + fence;
     }
     case "blockquote": {
@@ -347,7 +351,8 @@ export function mdToDoc(md: string): Doc {
     // fenced code
     const fence = l.raw.match(fenceRe);
     if (fence) {
-      const close = fence[2][0] === "`" ? /^`{3,}/ : /^~{3,}/;
+      // A fence closes only on the same character, at least as long, with nothing after it.
+      const close = new RegExp("^" + (fence[2][0] === "`" ? "`" : "~") + "{" + fence[2].length + ",}\\s*$");
       const body: string[] = [];
       i++;
       while (i < lines.length && !close.test(lines[i].trimStart())) {
@@ -378,8 +383,10 @@ export function mdToDoc(md: string): Doc {
     // table
     if (l.text.startsWith("|") && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1]) && lines[i + 1].includes("-")) {
       const parseRow = (row: string): string[] => {
-        let cells = row.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/);
-        return cells.map((c) => c.trim().replace(/\\\|/g, "|"));
+        // Pipes inside [[Target|Alias]] belong to the link, not the table.
+        const guarded = row.trim().replace(/\[\[[^\]]*\]\]/g, (m) => m.replace(/\|/g, "\u0001"));
+        const cells = guarded.replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/);
+        return cells.map((c) => c.trim().replace(/\u0001/g, "|").replace(/\\\|/g, "|"));
       };
       const header = parseRow(l.text);
       i += 2;
@@ -430,15 +437,19 @@ export function mdToDoc(md: string): Doc {
     const task = l.raw.match(taskRe);
     if (task) {
       const baseIndent = l.indent;
-      const items: { checked: boolean; content: string[] }[] = [];
+      const items: { checked: boolean; content: string[]; nested: string[] }[] = [];
       while (i < lines.length) {
         const cur = lineOf(i);
         const t = cur.raw.match(taskRe);
         if (t && cur.indent <= baseIndent + 1) {
-          items.push({ checked: t[2].toLowerCase() === "x", content: [t[3]] });
+          items.push({ checked: t[2].toLowerCase() === "x", content: [t[3]], nested: [] });
           i++;
         } else if (cur.text !== "" && cur.indent > baseIndent + 1) {
-          items[items.length - 1].content.push(cur.raw.slice(Math.min(baseIndent + 2, cur.indent)));
+          const rel = cur.raw.slice(Math.min(baseIndent + 2, cur.indent));
+          const it = items[items.length - 1];
+          // Indented list markers start a nested list; other indented text continues the item.
+          if (it.nested.length > 0 || /^\s*([-*+]|\d+[.)])\s/.test(rel)) it.nested.push(rel);
+          else it.content.push(rel);
           i++;
         } else if (cur.text !== "" && cur.indent === baseIndent && !/^\s*([-*+]|\d+[.)])\s/.test(cur.raw)) {
           // lazy continuation
@@ -451,7 +462,10 @@ export function mdToDoc(md: string): Doc {
         content: items.map((it) => ({
           type: "taskItem",
           attrs: { checked: it.checked },
-          content: [{ type: "paragraph", content: parseInline(it.content.join(" ")) }],
+          content: [
+            { type: "paragraph", content: parseInline(it.content.join(" ")) },
+            ...(it.nested.length ? (mdToDoc(it.nested.join("\n")).content as BlockNode[]) : []),
+          ],
         })),
       });
       continue;

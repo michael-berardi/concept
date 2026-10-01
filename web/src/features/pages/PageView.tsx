@@ -6,6 +6,7 @@ import type { Database, PageRecord, Property } from "@/api";
 import { Icon } from "@/ui/icons";
 import { ErrorState, Loading, Menu, useMenu, useToast } from "@/ui/primitives";
 import { BlockEditor, InlineToolbar } from "./BlockEditor";
+import { docToMd } from "@/lib/markdown";
 import { PropertyEditor } from "@/features/db/PropEditor";
 import { PagePanel } from "@/features/panel/PagePanel";
 import { usePanel } from "@/state/panel";
@@ -37,30 +38,48 @@ export function PageView() {
   const [dirty, setDirty] = useState(false);
   const [source, setSource] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const hashRef = useRef<string | undefined>(undefined);
+  const hashes = useRef(new Map<string, string>());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef({ title: "", body: "", props: {} as Record<string, unknown> });
+  const pathRef = useRef(path);
+  const editorRef = useRef<Editor | null>(null);
+  const sourceRef = useRef(false);
+  const touchedRef = useRef(false); // rich editor has edits not yet copied to latest.body
+  const conflictRef = useRef(false);
+  const version = useRef(0); // bumps on every local edit
+  const savedVersion = useRef(0);
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  const loadGen = useRef(0);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const pageMenu = useMenu();
 
+  pathRef.current = path;
+  sourceRef.current = source;
+  conflictRef.current = conflict;
+
   const load = useCallback(async () => {
+    const gen = ++loadGen.current;
     setError(null);
     setPage(null);
     try {
       const p = await api.page(ws, path);
       const m = path.match(/^Data\/([^/]+)\//);
-      setDb(m ? await api.database(ws, m[1]).catch(() => null) : null);
+      const schema = m ? await api.database(ws, m[1]).catch(() => null) : null;
+      if (gen !== loadGen.current) return; // a newer navigation owns the view now
+      setDb(schema);
       setPage(p);
       setTitle(p.title);
       setBody(p.body);
       setProps(p.properties ?? {});
       latest.current = { title: p.title, body: p.body, props: p.properties ?? {} };
+      version.current = savedVersion.current = 0;
+      touchedRef.current = false;
       setDirty(false);
       setConflict(false);
-      hashRef.current = p.contentHash;
+      hashes.current.set(p.path, p.contentHash);
       tabs.open(p.path, p.title);
     } catch (e) {
-      setError(e);
+      if (gen === loadGen.current) setError(e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, path]);
@@ -76,70 +95,96 @@ export function PageView() {
     }
   }, [page, isNew]);
 
-  // Reload when someone else (git, Retex, another user) changes this file.
-  useEffect(
-    () =>
-      api.onEvent(ws, (ev) => {
-        const paths = (ev as { paths?: string[] }).paths;
-        if (paths?.includes(path) && !latest.current.title.length) return;
-        if (paths?.includes(path) && !dirty) {
-          api
-            .page(ws, path)
-            .then((p) => {
-              if (p.contentHash === hashRef.current) return;
-              hashRef.current = p.contentHash;
-              setPage(p);
-              setBody(p.body);
-              setProps(p.properties ?? {});
-              setTitle(p.title);
-              latest.current = { title: p.title, body: p.body, props: p.properties ?? {} };
-            })
-            .catch(() => {});
+  /** Writes the latest local edits for the page on screen. Serialised, revision-aware. */
+  const doSave = useCallback(
+    (force = false): Promise<void> => {
+      const target = pathRef.current;
+      const ed = editorRef.current;
+      if (touchedRef.current && ed && !ed.isDestroyed && !sourceRef.current) {
+        latest.current.body = docToMd(ed.getJSON() as never);
+        touchedRef.current = false;
+      }
+      if (version.current === savedVersion.current && !force) return chain.current;
+      const snap = { ...latest.current };
+      const v = version.current;
+      const extra = Object.fromEntries(Object.entries(snap.props).filter(([k]) => !HIDDEN.has(k)));
+      chain.current = chain.current.then(async () => {
+        if (conflictRef.current && !force) return;
+        setSaving(true);
+        try {
+          const p = await api.updatePage(
+            ws,
+            target,
+            { title: snap.title, body: snap.body, properties: extra },
+            force ? "*" : hashes.current.get(target),
+          );
+          hashes.current.set(target, p.contentHash);
+          savedVersion.current = Math.max(savedVersion.current, v);
+          if (pathRef.current === target) {
+            if (version.current === v) setDirty(false);
+            setPage((cur) => (cur && cur.path === target ? { ...cur, contentHash: p.contentHash, updatedAt: p.updatedAt } : cur));
+            tabs.open(target, snap.title);
+            if (force) setConflict(false);
+          }
+        } catch (e) {
+          if ((e as ApiError).code === "conflict") {
+            if (pathRef.current === target) setConflict(true);
+            toast("This page changed elsewhere. Reload to see the latest version.", "error");
+          } else {
+            toast(e instanceof Error ? e.message : "Save failed", "error");
+          }
+        } finally {
+          setSaving(false);
         }
-      }),
-    [ws, path, dirty],
+      });
+      return chain.current;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ws],
   );
 
-  const save = useCallback(async () => {
-    if (conflict || !page) return;
-    const { title: t, body: b, props: pr } = latest.current;
-    setSaving(true);
-    try {
-      const patch: { title?: string; body?: string; properties?: Record<string, unknown> } = { title: t, body: b };
-      const extra = Object.fromEntries(Object.entries(pr).filter(([k]) => !HIDDEN.has(k)));
-      patch.properties = extra;
-      const p = await api.updatePage(ws, page.path, patch, hashRef.current);
-      hashRef.current = p.contentHash;
-      setDirty(false);
-      setPage((cur) => (cur ? { ...cur, contentHash: p.contentHash, updatedAt: p.updatedAt } : cur));
-      tabs.open(page.path, t);
-    } catch (e) {
-      if ((e as ApiError).code === "conflict") {
-        setConflict(true);
-        toast("This page changed elsewhere. Reload to see the latest version.", "error");
-      } else {
-        toast(e instanceof Error ? e.message : "Save failed", "error");
-      }
-    } finally {
-      setSaving(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conflict, page, ws]);
-
   const schedule = useCallback(() => {
+    version.current++;
     setDirty(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(save, 700);
-  }, [save]);
+    saveTimer.current = setTimeout(() => void doSave(), 700);
+  }, [doSave]);
 
+  // Navigating away (or unmounting) flushes pending edits instead of dropping them.
   useEffect(
     () => () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
         saveTimer.current = null;
       }
+      void doSave();
     },
-    [],
+    [path, doSave],
+  );
+
+  // Reload when someone else (git, Retex, another user) changes this file.
+  useEffect(
+    () =>
+      api.onEvent(ws, (ev) => {
+        const paths = (ev as { paths?: string[] }).paths;
+        if (!paths?.includes(path)) return;
+        if (version.current !== savedVersion.current) return; // local edits win until saved
+        const gen = loadGen.current;
+        api
+          .page(ws, path)
+          .then((p) => {
+            if (gen !== loadGen.current || version.current !== savedVersion.current) return;
+            if (p.contentHash === hashes.current.get(path)) return;
+            hashes.current.set(path, p.contentHash);
+            setPage(p);
+            setBody(p.body);
+            setProps(p.properties ?? {});
+            setTitle(p.title);
+            latest.current = { title: p.title, body: p.body, props: p.properties ?? {} };
+          })
+          .catch((e) => toast(e instanceof Error ? e.message : "Could not refresh the page", "error"));
+      }),
+    [ws, path, toast],
   );
 
   const openWiki = useCallback(
@@ -212,7 +257,14 @@ export function PageView() {
             <span className="faint save-state">
               {conflict ? "Out of date" : dirty ? (saving ? "Saving…" : "Unsaved") : page.updatedAt ? `Saved ${relativeTime(page.updatedAt)}` : ""}
             </span>
-            <button className={`tb-btn${source ? " is-on" : ""}`} aria-label="Toggle Markdown source" aria-pressed={source} title="Markdown source (⌘/)" onClick={() => setSource((s) => !s)}>
+            <button className={`tb-btn${source ? " is-on" : ""}`} aria-label="Toggle Markdown source" aria-pressed={source} title="Markdown source (⌘/)" onClick={() => {
+                if (!source && touchedRef.current && editorRef.current && !editorRef.current.isDestroyed) {
+                  latest.current.body = docToMd(editorRef.current.getJSON() as never);
+                  touchedRef.current = false;
+                  setBody(latest.current.body);
+                }
+                setSource((s) => !s);
+              }}>
               <Icon name="code" size={15} />
             </button>
             <button className="tb-btn" aria-label="Page menu" onClick={(e) => pageMenu.toggle(e.currentTarget)}>
@@ -226,14 +278,7 @@ export function PageView() {
               <Icon name="sync" size={15} />
               <span style={{ flex: 1 }}>Someone else changed this page. Your edits are not saved yet.</span>
               <button className="btn sm" onClick={load}>Reload latest</button>
-              <button
-                className="btn sm primary"
-                onClick={() => {
-                  hashRef.current = "*";
-                  setConflict(false);
-                  setTimeout(save, 0);
-                }}
-              >
+              <button className="btn sm primary" onClick={() => void doSave(true)}>
                 Keep mine
               </button>
             </div>
@@ -312,7 +357,14 @@ export function PageView() {
                 key={page.path + ":" + (source ? "s" : "e")}
                 value={body}
                 ws={ws}
-                editorRef={setEditor}
+                editorRef={(e) => {
+                  editorRef.current = e;
+                  setEditor(e);
+                }}
+                onTouch={() => {
+                  touchedRef.current = true;
+                  schedule();
+                }}
                 onOpenWiki={openWiki}
                 onChange={(md) => {
                   setBody(md);

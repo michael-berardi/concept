@@ -346,6 +346,7 @@ function TreeLevel({
 }) {
   const nav = useNavigate();
   const { toast } = useToast();
+  const tabs = useTabs();
   const [dropOn, setDropOn] = useState<string | null>(null);
 
   const drop = async (e: React.DragEvent, target: TreeNode) => {
@@ -354,7 +355,9 @@ function TreeLevel({
     const from = e.dataTransfer.getData("text/concept-path");
     if (!from || from === target.path || target.path.startsWith(from.replace(/\.md$/, "") + "/")) return;
     try {
-      await api.movePage(ws, from, target.path);
+      const moved = await api.movePage(ws, from, target.path);
+      tabs.close(from);
+      if (activePath === from) nav(pageHref(ws, moved), { replace: true });
       onMoved();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not move page", "error");
