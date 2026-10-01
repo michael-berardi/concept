@@ -70,7 +70,7 @@ Card features (Trello side): checklists (Markdown task lists in body), labels (`
 
 ## Multi-team access (server)
 - **Workspace** = one vault directory on the server. One server hosts many workspaces.
-- **Users**: email + password (scrypt), session cookie, personal API tokens (`cpt_…`), first registered user becomes instance admin. Invite links (`/invite/<token>`) with role. Optional OIDC (generic, env-configured) is a stretch goal.
+- **Users**: email + password (scrypt), session cookie, personal API tokens (`cpt_…`), first registered user becomes instance admin. Invite links (`/invite/<token>`) with role.
 - **Workspace roles**: `owner`, `admin`, `member`, `guest`. Guests see only what is explicitly shared.
 - **Teams**: named groups of members inside a workspace.
 - **ACL** by path prefix (`Pages/Sales`, `Data/deals`) for subject = user | team | workspace, level = `none view comment edit admin`. Most specific prefix wins; workspace default is `edit` for members, `none` for guests.
@@ -130,7 +130,7 @@ Sidebar (workspaces switcher, search ⌘K, favourites, page tree, databases), bl
 `ConceptKit` (no UI): vault scan/watch (FSEvents), frontmatter parser/writer that preserves unknown keys and ordering, database schema, rank math, search index, git sync via `/usr/bin/git`, optional server mode (REST client). `Concept.app`: sidebar, page editor (Markdown source + live rendered preview), board (drag and drop), table, card sheet, ⌘K quick open, sync status + button, vault picker, Retex-compatible. Built with `swift build`; `scripts/bundle.sh` produces `Concept.app` and a zip.
 
 ## Quality bar
-Unit tests in every package; API integration tests; Playwright-free visual verification via OverSeer browser screenshots at 375 px and 1920 px; `retex doctor` passes on a vault written by Concept; MIT license; no secrets in repo.
+Unit tests in every package (`pnpm -r test`, `swift test`), API integration tests including permission and path-safety regressions, and `retex doctor` passing on a vault written by Concept. Every view is checked at 375 px and 1920 px.
 
 ## Two views: Workspace and Board
 Concept has exactly two views, switched in the top bar (⌘1 / ⌘2).
