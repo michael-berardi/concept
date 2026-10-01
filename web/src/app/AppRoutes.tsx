@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "@/layout/AppShell";
 import { InviteAcceptScreen, LoginScreen, SetupScreen } from "@/features/auth/AuthScreens";
 import { CrmHome } from "@/features/home/CrmHome";
@@ -34,7 +34,7 @@ export function AppRoutes() {
       <Route path="/w/:ws" element={<AppShell />}>
         <Route index element={<CrmHome />} />
         <Route path="board" element={<BoardLens />} />
-        <Route path="page/*" element={<PageView />} />
+        <Route path="page/*" element={<PageRoute />} />
         <Route path="db/:slug" element={<DatabaseView />} />
         <Route path="graph" element={<GraphPage />} />
         <Route path="settings" element={<Navigate to="members" replace />} />
@@ -44,6 +44,12 @@ export function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+/** One PageView per path: leaving a page unmounts it, and its cleanup saves that page, never the next one. */
+function PageRoute() {
+  const { pathname } = useLocation();
+  return <PageView key={pathname} />;
 }
 
 function SettingsRoute() {

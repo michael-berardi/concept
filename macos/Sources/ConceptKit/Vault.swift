@@ -595,5 +595,16 @@ public final class Vault {
         }
         let data = try JSONEncoder().encode(settings)
         try data.write(to: absoluteURL(Self.syncFile), options: .atomic)
+        try keepOutOfGit(Self.syncFile)
+    }
+
+    /// Sync settings name the remote a token is sent to, so they must stay on this
+    /// machine: a collaborator's committed copy could redirect your credentials.
+    func keepOutOfGit(_ relativePath: String) throws {
+        let ignore = absoluteURL(Self.gitignoreFile)
+        let current = (try? String(contentsOf: ignore, encoding: .utf8)) ?? ""
+        guard !current.split(separator: "\n").contains(Substring(relativePath)) else { return }
+        let updated = current + (current.isEmpty || current.hasSuffix("\n") ? "" : "\n") + relativePath + "\n"
+        try updated.write(to: ignore, atomically: true, encoding: .utf8)
     }
 }

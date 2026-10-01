@@ -95,6 +95,32 @@ export function assertApiPath(relPath: string, write = false): void {
   void write;
 }
 
+/**
+ * The on-disk spelling of a path. On case-insensitive file systems `secret.md`
+ * and `Secret.md` are the same file, so permission checks must see one spelling.
+ */
+export function canonicalCase(vaultDir: string, relPath: string): string {
+  const out: string[] = [];
+  let dir = vaultDir;
+  for (const seg of relPath.split("/")) {
+    let actual = seg;
+    try {
+      const names = readdirSync(dir);
+      if (!names.includes(seg)) {
+        const hit = names.find((n) => n.toLowerCase() === seg.toLowerCase());
+        if (hit) actual = hit;
+      }
+    } catch {
+      out.push(seg);
+      out.push(...relPath.split("/").slice(out.length));
+      return out.join("/");
+    }
+    out.push(actual);
+    dir = path.join(dir, actual);
+  }
+  return out.join("/");
+}
+
 /** Pages and rows are Markdown files under Pages/ or Data/. */
 export function assertContentPath(relPath: string): void {
   assertApiPath(relPath);

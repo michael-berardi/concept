@@ -76,6 +76,7 @@ export function createSession(db: DB, userId: string): string {
 export function setSessionCookie(c: Context, sid: string): void {
   setCookie(c, SESSION_COOKIE, sid, {
     httpOnly: true,
+    secure: c.req.url.startsWith("https:") || c.req.header("x-forwarded-proto") === "https",
     sameSite: "Lax",
     path: "/",
     maxAge: SESSION_TTL_MS / 1000,
@@ -200,7 +201,10 @@ const SUBJECT_PRIORITY: Record<string, number> = { user: 0, team: 1, workspace: 
  */
 export function effectiveLevel(db: DB, access: WorkspaceAccess, rawPath: string): AclLevel {
   // `Page.conflict-123.md` is a copy of `Page.md`: it carries the same permissions.
-  const path = rawPath.replace(/\.conflict-\d+(?=\.[^./]+$)/, "");
+  let path = rawPath.replace(/\.conflict-\d+(?=\.[^./]+$)/, "");
+  // A database's schema file is governed by the database's own permissions.
+  const schema = path.match(/^\.concept\/databases\/([^/]+)\.json$/);
+  if (schema) path = `Data/${schema[1]}`;
   const cached = access._permCache.get(path);
   if (cached) return cached;
 

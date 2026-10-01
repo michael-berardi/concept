@@ -10,7 +10,7 @@ services:
       - "8787:8787"
     environment:
       # Required in production: a long random string used to encrypt git
-      # tokens at rest and to sign sessions. Generate one with:
+      # tokens at rest. Generate one with:
       #   openssl rand -base64 32
       CONCEPT_SECRET: ${CONCEPT_SECRET:-}
       # Set to 1 to allow open registration without invites (default: invite-only).

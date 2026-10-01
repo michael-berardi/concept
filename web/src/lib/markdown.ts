@@ -114,7 +114,7 @@ function blockToMd(node: BlockNode, indent: string, orderedDepth: number): strin
         .join("\n");
     case "orderedList":
       return (node.content as BlockNode[])
-        .map((li, i) => liToMd(li, pad + `${i + 1}. `, indent + "   ", orderedDepth))
+        .map((li, i) => liToMd(li, pad + `${(Number(node.attrs?.start) || 1) + i}. `, indent + "   ", orderedDepth))
         .join("\n");
     case "taskList":
       return (node.content as BlockNode[])
@@ -338,8 +338,9 @@ export function mdToDoc(md: string): Doc {
   const blocks: BlockNode[] = [];
   let i = 0;
   const lineOf = (idx: number): Line => {
-    const raw = lines[idx] ?? "";
-    return { raw, indent: raw.match(/^\s*/)![0].replace(/\t/g, "  ").length, text: raw.trim() };
+    // Leading tabs count as two spaces so tab-indented sub-lists nest like space-indented ones.
+    const raw = (lines[idx] ?? "").replace(/^\t+/, (t) => "  ".repeat(t.length));
+    return { raw, indent: raw.match(/^\s*/)![0].length, text: raw.trim() };
   };
 
   while (i < lines.length) {
@@ -473,19 +474,19 @@ export function mdToDoc(md: string): Doc {
     const ul = l.raw.match(ulRe);
     if (ul) {
       const baseIndent = l.indent;
-      const items: string[][] = [];
+      const items: ListParts[] = [];
       while (i < lines.length) {
         const cur = lineOf(i);
         const m = cur.raw.match(ulRe);
         const isTask = cur.raw.match(taskRe);
         if (m && !isTask && cur.indent <= baseIndent + 1) {
-          items.push([m[2]]);
+          items.push({ parts: [m[2]], nested: [] });
           i++;
         } else if (cur.text !== "" && cur.indent > baseIndent + 1) {
-          items[items.length - 1].push(cur.raw.slice(Math.min(baseIndent + 2, cur.indent)));
+          addNested(items[items.length - 1], cur.raw.slice(Math.min(baseIndent + 2, cur.indent)));
           i++;
         } else if (cur.text !== "" && cur.indent === baseIndent && !/^\s*([-*+]|\d+[.)])\s/.test(cur.raw)) {
-          items[items.length - 1].push(cur.raw.trim());
+          items[items.length - 1].parts.push(cur.raw.trim());
           i++;
         } else break;
       }
@@ -498,23 +499,25 @@ export function mdToDoc(md: string): Doc {
     const ol = l.raw.match(olRe);
     if (ol) {
       const baseIndent = l.indent;
-      const items: string[][] = [];
+      const items: ListParts[] = [];
       while (i < lines.length) {
         const cur = lineOf(i);
         const m = cur.raw.match(olRe);
         if (m && cur.indent <= baseIndent + 1) {
-          items.push([m[3]]);
+          items.push({ parts: [m[3]], nested: [] });
           i++;
         } else if (cur.text !== "" && cur.indent > baseIndent + 1) {
-          items[items.length - 1].push(cur.raw.slice(Math.min(baseIndent + 3, cur.indent)));
+          addNested(items[items.length - 1], cur.raw.slice(Math.min(baseIndent + 3, cur.indent)));
           i++;
         } else if (cur.text !== "" && cur.indent === baseIndent && !/^\s*([-*+]|\d+[.)])\s/.test(cur.raw)) {
-          items[items.length - 1].push(cur.raw.trim());
+          items[items.length - 1].parts.push(cur.raw.trim());
           i++;
         } else break;
       }
+      const start = Number(ol[2] ?? 1);
       blocks.push({
         type: "orderedList",
+        ...(Number.isFinite(start) && start !== 1 ? { attrs: { start } } : {}),
         content: items.map((it) => listItemNode(it)),
       });
       continue;
@@ -564,10 +567,24 @@ export function mdToDoc(md: string): Doc {
   return { type: "doc", content: blocks };
 }
 
-function listItemNode(parts: string[]): BlockNode {
+interface ListParts {
+  parts: string[];
+  nested: string[];
+}
+
+/** Indented list markers start a nested list; other indented text continues the item. */
+function addNested(item: ListParts, rel: string): void {
+  if (item.nested.length > 0 || /^\s*([-*+]|\d+[.)])\s/.test(rel)) item.nested.push(rel);
+  else item.parts.push(rel);
+}
+
+function listItemNode(item: ListParts): BlockNode {
   return {
     type: "listItem",
-    content: [{ type: "paragraph", content: parseInline(parts.join(" ")) }],
+    content: [
+      { type: "paragraph", content: parseInline(item.parts.join(" ")) },
+      ...(item.nested.length ? (mdToDoc(item.nested.join("\n")).content as BlockNode[]) : []),
+    ],
   };
 }
 

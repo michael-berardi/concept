@@ -125,4 +125,13 @@ describe("round-trip regressions", () => {
     const table = mdToDoc(md).content[0];
     expect((table.content as { content: unknown[] }[])[1].content).toHaveLength(2); // alias pipe is not a column
   });
+  it("keeps nested bullet, ordered and tab-indented lists", () => {
+    const rt2 = (md: string) => docToMd(mdToDoc(md) as never);
+    expect(rt2("- a\n  - b\n- c")).toBe("- a\n  - b\n- c");
+    expect(rt2("1. one\n   1. inner\n2. two")).toBe("1. one\n   1. inner\n2. two");
+    expect(rt2("- a\n\t- b")).toBe("- a\n  - b");
+  });
+  it("keeps the start number of an ordered list", () => {
+    expect(docToMd(mdToDoc("3. x\n4. y") as never)).toBe("3. x\n4. y");
+  });
 });

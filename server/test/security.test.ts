@@ -179,3 +179,41 @@ test("repeated failed sign-ins are throttled", async () => {
   for (let i = 0; i < 10; i++) last = (await c.post("/api/auth/login", { email: "nobody@sec.test", password: "wrong-password" })).status;
   assert.equal(last, 429);
 });
+
+test("case-variant spellings hit the same permissions as the real file", async () => {
+  const res = await member.get(`/api/w/${slug}/pages/Pages/SECRET.md`);
+  assert.notEqual(res.status, 200);
+  assert.ok(!res.text.includes("top secret"));
+});
+
+test("moving or deleting a parent cannot expose or destroy what the member may not edit", async () => {
+  const ws = await admin.post("/api/workspaces", { name: "TreeCo" });
+  const s = ws.json.slug;
+  const m = new Client(env.baseUrl);
+  const inv = await admin.post(`/api/w/${s}/invites`, { role: "member" });
+  await m.register("tree-member@sec.test", "password-123", inv.json.token);
+  const me = await m.get("/api/me");
+  await admin.post(`/api/w/${s}/pages`, { title: "Team", body: "team" });
+  await admin.post(`/api/w/${s}/pages`, { title: "Other", body: "other" });
+  await admin.post(`/api/w/${s}/pages`, { title: "HR", parent: "Pages/Team.md", body: "salaries" });
+  await admin.put(`/api/w/${s}/acl`, { path: "Pages/Team/HR.md", subjectType: "user", subjectId: me.json.user.id, level: "none" });
+
+  const move = await m.post(`/api/w/${s}/pages/Pages/Team.md/move`, { parent: "Pages/Other.md" });
+  assert.equal(move.status, 403, "a member moved a page whose child they cannot see");
+  const del = await m.delete(`/api/w/${s}/vault/file/Pages/Team`);
+  assert.equal(del.status, 403, "a member deleted a folder holding a page they cannot edit");
+  const still = await admin.get(`/api/w/${s}/pages/Pages/Team/HR.md`);
+  assert.equal(still.status, 200);
+});
+
+test("a database schema file follows the database's permissions", async () => {
+  const ws = await admin.post("/api/workspaces", { name: "SchemaCo", template: "crm" });
+  const s = ws.json.slug;
+  const m = new Client(env.baseUrl);
+  const inv = await admin.post(`/api/w/${s}/invites`, { role: "member" });
+  await m.register("schema-member@sec.test", "password-123", inv.json.token);
+  const me = await m.get("/api/me");
+  await admin.put(`/api/w/${s}/acl`, { path: "Data/deals", subjectType: "user", subjectId: me.json.user.id, level: "none" });
+  assert.equal((await m.get(`/api/w/${s}/databases/deals`)).status, 403);
+  assert.equal((await m.get(`/api/w/${s}/vault/file/.concept/databases/deals.json`)).status, 403);
+});
