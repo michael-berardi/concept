@@ -25,12 +25,13 @@ function normalizeTree(raw: { pages?: any[]; databases?: any[] }): TreeNode[] {
       if (existing) {
         if (isFile) {
           existing.path = n.path;
+          existing.title = n.title || existing.title;
           existing.type = "page";
         }
         existing.children = [...(existing.children ?? []), ...kids];
         continue;
       }
-      const node: TreeNode = { path: n.path, title: n.name, type: isFile ? "page" : "folder", icon: n.icon ?? undefined, children: kids };
+      const node: TreeNode = { path: n.path, title: n.title || n.name, type: isFile ? "page" : "folder", icon: n.icon ?? undefined, children: kids };
       byName.set(key, node);
       order.push(node);
     }

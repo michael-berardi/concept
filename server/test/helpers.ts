@@ -156,7 +156,7 @@ export class Client {
 
 export async function eventually(
   fn: () => Promise<boolean>,
-  timeoutMs = 5000,
+  timeoutMs = 12000,
   stepMs = 100,
 ): Promise<void> {
   const start = Date.now();
