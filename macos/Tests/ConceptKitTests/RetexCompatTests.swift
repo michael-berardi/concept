@@ -5,7 +5,12 @@ import Foundation
 /// Concept-written vaults must be valid Retex vaults:
 /// `retex doctor` passes and `retex board` shows records Concept wrote.
 struct RetexCompatTests {
-    static let retexPath = NSHomeDirectory() + "/.ultraterm/bin/retex"
+    /// `RETEX_BIN`, else `retex` on PATH. Tests that need it are skipped when it is absent.
+    static let retexPath: String = {
+        if let env = ProcessInfo.processInfo.environment["RETEX_BIN"], !env.isEmpty { return env }
+        let dirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
+        return dirs.map { "\($0)/retex" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "retex"
+    }()
 
     @Test("retex doctor and board accept a vault Concept wrote")
     func doctorAndBoard() throws {

@@ -5,7 +5,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { Client, makeApp, type TestEnv } from "./helpers.js";
 
-const RETEX = process.env.RETEX_BIN ?? `${process.env.HOME}/.ultraterm/bin/retex`;
+// RETEX_BIN, else `retex` on PATH.
+const RETEX = process.env.RETEX_BIN ?? "retex";
 
 let env: TestEnv;
 let admin: Client;
