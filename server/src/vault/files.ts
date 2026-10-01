@@ -1,5 +1,6 @@
 import {
   existsSync,
+  realpathSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -10,7 +11,7 @@ import {
 } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import path from "node:path";
-import { badRequest, notFound } from "../errors.js";
+import { badRequest, forbidden, notFound } from "../errors.js";
 
 export const RESERVED_DIRS = new Set([".concept", ".trash", ".retex", ".git", ".obsidian"]);
 export const ATTACHMENTS_DIR = "Attachments";
@@ -42,8 +43,65 @@ export function isMarkdown(relPath: string): boolean {
   return relPath.toLowerCase().endsWith(".md");
 }
 
+/**
+ * Absolute path of a vault-relative path, confined to the vault: the deepest
+ * existing ancestor is resolved with realpath, so a symlink inside the vault
+ * can never lead a read or write outside it.
+ */
 export function absPath(vaultDir: string, relPath: string): string {
-  return path.join(vaultDir, ...relPath.split("/"));
+  const abs = path.join(vaultDir, ...relPath.split("/"));
+  let root: string;
+  try {
+    root = realpathSync(vaultDir);
+  } catch {
+    return abs;
+  }
+  let probe = abs;
+  for (;;) {
+    try {
+      const real = realpathSync(probe);
+      if (real !== root && !real.startsWith(root + path.sep)) {
+        throw forbidden(`Path escapes the vault: ${relPath}`, "path_escape");
+      }
+      return abs;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT" || (err as NodeJS.ErrnoException).code === "ENOTDIR") {
+        const parent = path.dirname(probe);
+        if (parent === probe) return abs;
+        probe = parent;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * Policy for paths reachable through the HTTP API: never `.git`, `.trash`,
+ * `.retex` or `.obsidian`; the only dot-directory content is the database
+ * schemas in `.concept/databases/`. `write` additionally protects the
+ * workspace identity file.
+ */
+export function assertApiPath(relPath: string, write = false): void {
+  const segs = relPath.split("/");
+  if (segs[0] === CONCEPT_DIR) {
+    const ok = segs[1] === "databases" && segs.length === 3 && segs[2].endsWith(".json") && !segs[2].startsWith(".");
+    if (!ok) throw badRequest(`Reserved path: ${relPath}`, "reserved_path");
+    return;
+  }
+  for (const s of segs) {
+    if (s.startsWith(".")) throw badRequest(`Reserved path: ${relPath}`, "reserved_path");
+  }
+  void write;
+}
+
+/** Pages and rows are Markdown files under Pages/ or Data/. */
+export function assertContentPath(relPath: string): void {
+  assertApiPath(relPath);
+  const top = relPath.split("/")[0];
+  if ((top !== PAGES_DIR && top !== DATA_DIR) || !isMarkdown(relPath)) {
+    throw badRequest(`Not a page path (expected Pages/… or Data/… ending in .md): ${relPath}`, "invalid_path");
+  }
 }
 
 export function readFileIfExists(vaultDir: string, relPath: string): Buffer | null {

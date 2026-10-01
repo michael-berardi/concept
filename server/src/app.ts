@@ -15,6 +15,7 @@ import {
   createApiToken,
   createSession,
   effectiveLevel,
+  getAccess,
   hashPassword,
   levelAtLeast,
   requireAuth,
@@ -33,6 +34,9 @@ import {
   CONCEPT_DIR,
   DATA_DIR,
   PAGES_DIR,
+  absPath,
+  assertApiPath,
+  assertContentPath,
   listAllFiles,
   readFileIfExists,
   safeRelPath,
@@ -116,8 +120,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
   const wildcard = (c: any, prefix: string): string => {
     const url = new URL(c.req.url);
     const rest = url.pathname.slice(prefix.length);
+    let joined: string;
     try {
-      return rest
+      joined = rest
         .split("/")
         .filter((s) => s !== "")
         .map((s) => decodeURIComponent(s))
@@ -125,6 +130,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
     } catch {
       throw badRequest("Malformed URL encoding in path", "invalid_path");
     }
+    // Canonicalise once, before any ACL check or file access, so `\\`, `//`,
+    // leading `/` and `.`/`..` can never differ between check and use.
+    return safeRelPath(joined);
   };
 
   const jsonBody = async (c: any): Promise<Record<string, any>> => {
@@ -613,6 +621,10 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.delete("/api/w/:ws/teams/:id/members/:userId", (c) => {
     const access = c.get("access");
     requireWsAdmin(access);
+    const ownTeam = db
+      .prepare(`SELECT id FROM teams WHERE id = ? AND workspace_id = ?`)
+      .get(c.req.param("id"), access.workspaceId);
+    if (!ownTeam) throw notFound("No such team");
     const r = db
       .prepare(`DELETE FROM team_members WHERE team_id = ? AND user_id = ?`)
       .run(c.req.param("id"), c.req.param("userId"));
@@ -755,6 +767,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.get("/api/w/:ws/pages/*", (c) => {
     const access = c.get("access");
     const p = wildcard(c, `/api/w/${access.slug}/pages`);
+    assertContentPath(p);
     requireLevel(access, db, p, "view");
     return c.json(engine.getPage({ id: access.workspaceId, slug: access.slug }, p, effectiveLevel(db, access, p)));
   });
@@ -762,6 +775,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.put("/api/w/:ws/pages/*", async (c) => {
     const access = c.get("access");
     const p = wildcard(c, `/api/w/${access.slug}/pages`);
+    assertContentPath(p);
     requireLevel(access, db, p, "edit");
     const b = await jsonBody(c);
     const page = engine.updatePage(
@@ -782,6 +796,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.delete("/api/w/:ws/pages/*", (c) => {
     const access = c.get("access");
     const p = wildcard(c, `/api/w/${access.slug}/pages`);
+    assertContentPath(p);
     requireLevel(access, db, p, "edit");
     const res = engine.deletePage({ id: access.workspaceId, slug: access.slug }, p, actorLabel(c));
     logActivity(access.workspaceId, p, c.get("user"), "page.deleted", `trashed to ${res.trashedTo}`);
@@ -796,6 +811,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const b = await jsonBody(c);
     if (isMove) {
       const parent = b.parent ? safeRelPath(String(b.parent)) : null;
+      assertContentPath(p);
+      if (parent) assertApiPath(parent);
       requireLevel(access, db, p, "edit");
       requireLevel(access, db, parent ?? PAGES_DIR, "edit");
       const page = engine.movePage(
@@ -1060,7 +1077,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const id = `${shortId("att", 5).slice(4)}-${safeName}`;
     const relPath = `${ATTACHMENTS_DIR}/${id}`;
     const buf = Buffer.from(await file.arrayBuffer());
-    writeFileSync(path.join(engine.vaultDir(access.slug), ...relPath.split("/")), buf);
+    writeFileSync(absPath(engine.vaultDir(access.slug), relPath), buf);
     engine.afterWrite(access.slug, [relPath], actorLabel(c));
     logActivity(access.workspaceId, relPath, c.get("user"), "attachment.uploaded", `${buf.length} bytes`);
     return c.json({ id, path: relPath, size: buf.length }, 201);
@@ -1070,10 +1087,15 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const access = c.get("access");
     requireLevel(access, db, ATTACHMENTS_DIR, "view");
     const id = c.req.param("id");
+    if (!/^[\w.\-() ]{1,160}$/.test(id) || id.startsWith(".")) throw badRequest("Invalid attachment id", "invalid_path");
     const relPath = `${ATTACHMENTS_DIR}/${id}`;
+    requireLevel(access, db, relPath, "view");
     const buf = readFileIfExists(engine.vaultDir(access.slug), relPath);
     if (!buf) throw notFound(`No attachment '${id}'`);
     return c.body(new Uint8Array(buf), 200, {
+      // Uploaded files are untrusted: never let a browser run them as part of this origin.
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
       "content-type": contentTypeFor(relPath),
       "content-disposition": `inline; filename="${id.split("-").slice(1).join("-")}"`,
     });
@@ -1127,6 +1149,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.get("/api/w/:ws/vault/file/*", (c) => {
     const access = c.get("access");
     const p = wildcard(c, `/api/w/${access.slug}/vault/file`);
+    assertApiPath(p);
     requireLevel(access, db, p, "view");
     const file = engine.readVaultFile({ id: access.workspaceId, slug: access.slug }, p);
     if (!file) throw notFound(`No file at ${p}`);
@@ -1136,6 +1159,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.put("/api/w/:ws/vault/file/*", async (c) => {
     const access = c.get("access");
     const p = wildcard(c, `/api/w/${access.slug}/vault/file`);
+    assertApiPath(p, true);
     requireLevel(access, db, p, "edit");
     const text = await c.req.text();
     const res = engine.writeVaultFile(
@@ -1152,6 +1176,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.delete("/api/w/:ws/vault/file/*", (c) => {
     const access = c.get("access");
     const p = wildcard(c, `/api/w/${access.slug}/vault/file`);
+    assertApiPath(p, true);
     requireLevel(access, db, p, "edit");
     const res = engine.deleteVaultFile({ id: access.workspaceId, slug: access.slug }, p, actorLabel(c));
     logActivity(access.workspaceId, p, c.get("user"), "vault.file.deleted", `trashed to ${res.trashedTo}`);
@@ -1163,6 +1188,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const b = await jsonBody(c);
     const from = safeRelPath(String(b.from ?? ""));
     const to = safeRelPath(String(b.to ?? ""));
+    assertApiPath(from, true);
+    assertApiPath(to, true);
     requireLevel(access, db, from, "edit");
     requireLevel(access, db, to, "edit");
     return c.json(engine.moveVaultEntry({ id: access.workspaceId, slug: access.slug }, from, to, actorLabel(c)));
@@ -1304,18 +1331,19 @@ export function createApp(deps: AppDeps): Hono<Env> {
     }
     const vaultDir = engine.vaultDir(access.slug);
     const written: string[] = [];
+    const skipped: string[] = [];
     for (const e of entries) {
-      const clean = e.path.replace(/\\/g, "/");
-      if (
-        clean.startsWith(".git/") ||
-        clean.startsWith(".trash/") ||
-        clean.startsWith(".retex/") ||
-        clean === `${CONCEPT_DIR}/workspace.json` ||
-        clean.includes("..")
-      ) {
+      if (e.path.endsWith("/")) continue;
+      let clean: string;
+      try {
+        clean = safeRelPath(e.path);
+        assertApiPath(clean, true);
+        if (clean === `${CONCEPT_DIR}/workspace.json`) throw new Error("reserved");
+      } catch {
+        skipped.push(e.path);
         continue;
       }
-      const abs = path.join(vaultDir, ...clean.split("/"));
+      const abs = absPath(vaultDir, clean);
       mkdirSync(path.dirname(abs), { recursive: true });
       writeFileSync(abs, e.data);
       written.push(clean);
@@ -1323,7 +1351,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const re = indexer.reindexWorkspace(access.workspaceId, vaultDir);
     bus.publish(access.slug, { type: "change", paths: ["*"], actor: actorLabel(c) });
     logActivity(access.workspaceId, null, c.get("user"), "workspace.imported", `${written.length} files`);
-    return c.json({ imported: written.length, indexed: re.indexed }, 200);
+    return c.json({ imported: written.length, skipped: skipped.length, indexed: re.indexed }, 200);
   });
 
   function requireWsAdmin2(access: WorkspaceAccess) {
@@ -1336,29 +1364,52 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // SSE events
   // =====================================================================
   app.get("/api/w/:ws/events", (c) => {
-    const access = c.get("access");
+    const first = c.get("access");
+    const user = c.get("user");
+    const wsRow = getWs(first.slug);
     return streamSSE(c, async (stream) => {
       let open = true;
-      const unsubscribe = bus.subscribe(access.slug, (event) => {
+      const names = (actor: string) => actor.replace(/\s*<[^>]*>\s*$/, "");
+      // Re-evaluated per event, so a removed member or a new ACL rule takes effect immediately.
+      const unsubscribe = bus.subscribe(first.slug, (event) => {
         if (!open) return;
-        void stream.writeSSE({
-          event: event.type,
-          data: JSON.stringify(event),
-        });
+        const access = getAccess(db, wsRow, user);
+        if (!access) {
+          open = false;
+          return;
+        }
+        const canSee = (p: string) => p === "*" || levelAtLeast(effectiveLevel(db, access, p), "view");
+        let out: unknown;
+        if (event.type === "change") {
+          const paths = event.paths.filter(canSee);
+          if (paths.length === 0) return;
+          out = { type: "change", paths, actor: names(event.actor) };
+        } else if (event.type === "comment") {
+          if (!canSee(event.path)) return;
+          out = { type: "comment", path: event.path, actor: names(event.actor) };
+        } else {
+          const admin = access.role === "owner" || access.role === "admin" || access.isInstanceAdmin;
+          out = admin ? event : { type: "sync", status: event.status };
+        }
+        void stream.writeSSE({ event: event.type, data: JSON.stringify(out) });
       });
       const heartbeat = setInterval(() => {
         if (!open) return;
+        if (!getAccess(db, wsRow, user)) {
+          open = false;
+          return;
+        }
         void stream.writeSSE({ event: "ping", data: String(Date.now()) });
       }, 25_000);
-      void stream.writeSSE({ event: "hello", data: JSON.stringify({ workspace: access.slug }) });
+      void stream.writeSSE({ event: "hello", data: JSON.stringify({ workspace: first.slug }) });
       stream.onAbort(() => {
         open = false;
-        clearInterval(heartbeat);
-        unsubscribe();
       });
       while (open) {
         await stream.sleep(1000);
       }
+      clearInterval(heartbeat);
+      unsubscribe();
     });
   });
 

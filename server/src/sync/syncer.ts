@@ -10,6 +10,8 @@ import {
   listConflictCopies,
   preserveConflictCopy,
   repoHasCommits,
+  validateBranch,
+  validateRemoteUrl,
 } from "./git.js";
 
 // ---------- token encryption (AES-256-GCM, key derived from instance secret) ----------
@@ -95,8 +97,9 @@ export class SyncManager {
     input: { remoteUrl?: string | null; branch?: string; token?: string | null; enabled?: boolean },
   ): SyncSettings {
     const current = this.getSettings(wsId);
-    const remoteUrl = input.remoteUrl !== undefined ? input.remoteUrl : current.remoteUrl;
-    const branch = input.branch ?? current.branch;
+    const remoteUrl =
+      input.remoteUrl !== undefined ? (input.remoteUrl ? validateRemoteUrl(input.remoteUrl) : null) : current.remoteUrl;
+    const branch = validateBranch(input.branch ?? current.branch);
     const enabled = input.enabled ?? current.enabled;
     let tokenEnc: string | null = null;
     if (input.token !== undefined) {
@@ -189,10 +192,13 @@ export class SyncManager {
   /** Run sync immediately (used by POST /sync/run and tests). */
   async run(slug: string, actor: string): Promise<SyncStatus> {
     const prev = this.chains.get(slug) ?? Promise.resolve();
-    const next = prev.then(
-      () => this.runOnce(slug, actor),
-      () => this.runOnce(slug, actor),
-    );
+    let snapshot: SyncStatus | null = null;
+    const exec = async () => {
+      await this.runOnce(slug, actor);
+      // Report the state this run produced, not whatever a later queued run set.
+      snapshot = this.getStatus(slug);
+    };
+    const next = prev.then(exec, exec);
     this.chains.set(
       slug,
       next.then(
@@ -201,7 +207,7 @@ export class SyncManager {
       ),
     );
     await next;
-    return this.getStatus(slug);
+    return snapshot ?? this.getStatus(slug);
   }
 
   private async runOnce(slug: string, actor: string): Promise<void> {
@@ -235,7 +241,8 @@ export class SyncManager {
   ): Promise<Partial<InternalState>> {
     const token = this.readToken(wsId);
     const remote = authedUrl(settings.remoteUrl as string, token);
-    const branch = settings.branch || "main";
+    const branch = validateBranch(settings.branch || "main");
+    validateRemoteUrl(settings.remoteUrl as string);
 
     if (!isRepo(vaultDir)) {
       const init = await git(vaultDir, ["init", "-b", branch]);
@@ -262,7 +269,7 @@ export class SyncManager {
 
     // Fetch remote state. The (token-embedded) URL is used per-command so the
     // credential is never written to .git/config.
-    const fetch = await git(vaultDir, ["fetch", "--quiet", remote, branch]);
+    const fetch = await git(vaultDir, ["fetch", "--quiet", "--", remote, branch]);
     let conflicts: string[] = [];
     if (fetch.code === 0) {
       const remoteExists = await git(vaultDir, ["rev-parse", "--verify", `FETCH_HEAD`]);
@@ -331,7 +338,7 @@ export class SyncManager {
     }
 
     // Push.
-    const push = await git(vaultDir, ["push", "--quiet", remote, `HEAD:refs/heads/${branch}`]);
+    const push = await git(vaultDir, ["push", "--quiet", "--", remote, `HEAD:refs/heads/${branch}`]);
     if (push.code !== 0) {
       return {
         lastStatus: "error",

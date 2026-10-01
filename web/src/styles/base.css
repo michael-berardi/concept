@@ -674,8 +674,9 @@ textarea.input {
 }
 
 .board-col {
-  width: 276px;
-  flex: none;
+  width: auto;
+  min-width: 252px;
+  flex: 1 1 252px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;

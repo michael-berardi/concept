@@ -16,8 +16,8 @@ export const badRequest = (message: string, code = "bad_request", extra?: Record
   new ApiError(400, code, message, extra);
 export const unauthorized = (message = "Authentication required") =>
   new ApiError(401, "unauthorized", message);
-export const forbidden = (message = "You do not have permission to do that") =>
-  new ApiError(403, "forbidden", message);
+export const forbidden = (message = "You do not have permission to do that", code = "forbidden") =>
+  new ApiError(403, code, message);
 export const notFound = (message = "Not found") => new ApiError(404, "not_found", message);
 export const conflict = (
   message: string,

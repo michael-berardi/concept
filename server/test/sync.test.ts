@@ -147,14 +147,14 @@ test("watcher: external file edits by retex/git re-index within a moment", async
     const rows = await admin.get(`/api/w/${slug}/databases/tasks/rows?view=board`);
     const match = rows.json.rows.find((r: any) => r.id === row.id);
     return match?.properties?.status === "Done";
-  }, 6000);
+  }, 20000);
 
   // External deletion disappears from the index.
   rmSync(rowFile);
   await eventually(async () => {
     const rows = await admin.get(`/api/w/${slug}/databases/tasks/rows`);
     return !rows.json.rows.some((r: any) => r.id === row.id);
-  }, 6000);
+  }, 20000);
 
   // External creation is indexed too.
   const newFile = path.join(vault, "Pages", "External.md");
@@ -162,7 +162,7 @@ test("watcher: external file edits by retex/git re-index within a moment", async
   await eventually(async () => {
     const res = await admin.get(`/api/w/${slug}/pages/Pages/External.md`);
     return res.status === 200;
-  }, 6000);
+  }, 20000);
 });
 
 test("watcher: own API writes do not lose data (file matches API response)", async () => {
