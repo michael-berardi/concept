@@ -106,12 +106,13 @@ function formatCurrency(n: number): string {
 }
 
 export function PropertyEditor({
-  db, prop, value, onCommit,
+  db, prop, value, onCommit, ws,
 }: {
   db: Database;
   prop: Property;
   value: unknown;
   onCommit: (v: unknown) => void;
+  ws?: string;
 }) {
   switch (prop.type) {
     case "title":
@@ -204,44 +205,46 @@ export function PropertyEditor({
       );
     }
     case "person": {
-      return <PersonPicker value={value as string} onCommit={onCommit} />;
+      return <PersonPicker ws={ws} value={value as string} onCommit={onCommit} />;
     }
     case "relation": {
-      const target = prop.database ?? "";
-      void target;
-      return <RelationPicker value={value as string} onCommit={onCommit} />;
+      return <RelationPicker ws={ws} database={prop.database} value={value as string} onCommit={onCommit} />;
     }
     default:
       return <PropertyValue prop={prop} value={value} />;
   }
 }
 
-function PersonPicker({ value, onCommit }: { value?: string; onCommit: (v: unknown) => void }) {
-  const people = ["Ada Stone", "Mike Okafor", "June Park"];
+function PersonPicker({ ws, value, onCommit }: { ws?: string; value?: string; onCommit: (v: unknown) => void }) {
+  const [people, setPeople] = useState<string[]>([]);
+  useEffect(() => {
+    if (!ws) return;
+    api.members(ws).then((m) => setPeople(m.map((x) => x.name))).catch(() => setPeople([]));
+  }, [ws]);
+  const all = value && !people.includes(value) ? [value, ...people] : people;
   return (
     <select className="cell-select" value={value ?? ""} onChange={(e) => onCommit(e.target.value || null)} onClick={(e) => e.stopPropagation()}>
       <option value="">—</option>
-      {people.map((p) => (
+      {all.map((p) => (
         <option key={p}>{p}</option>
       ))}
     </select>
   );
 }
 
-function RelationPicker({ value, onCommit }: { value?: string; onCommit: (v: unknown) => void }) {
+/** Relations are stored as `[[Title]]` so they are real wiki links in the file. */
+function RelationPicker({ ws, database, value, onCommit }: { ws?: string; database?: string; value?: string; onCommit: (v: unknown) => void }) {
   const [options, setOptions] = useState<string[]>([]);
   useEffect(() => {
-    // relations resolve against the companies db in mock/dev; the server search
-    // endpoint is the authority in production.
-    api
-      .rows("", "companies")
-      .then((r) => setOptions(r.rows.map((x) => String(x.properties.title))))
-      .catch(() => setOptions([]));
-  }, []);
+    if (!ws || !database) return;
+    api.rows(ws, database).then((r) => setOptions(r.rows.map((x) => String(x.properties.title)))).catch(() => setOptions([]));
+  }, [ws, database]);
+  const current = typeof value === "string" ? value.replace(/^\[\[|\]\]$/g, "") : "";
+  const all = current && !options.includes(current) ? [current, ...options] : options;
   return (
-    <select className="cell-select" value={value ?? ""} onChange={(e) => onCommit(e.target.value || null)} onClick={(e) => e.stopPropagation()}>
+    <select className="cell-select" value={current} onChange={(e) => onCommit(e.target.value ? `[[${e.target.value}]]` : null)} onClick={(e) => e.stopPropagation()}>
       <option value="">—</option>
-      {options.map((o) => (
+      {all.map((o) => (
         <option key={o}>{o}</option>
       ))}
     </select>

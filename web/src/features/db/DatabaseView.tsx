@@ -228,6 +228,7 @@ export function DatabaseView() {
         ) : (
           <div style={{ padding: "8px 16px 40px" }}>
             <TableView
+              ws={ws}
               db={db}
               viewId={activeView?.id ?? ""}
               rows={visibleRows}

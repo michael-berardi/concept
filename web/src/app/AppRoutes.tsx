@@ -4,7 +4,7 @@ import { InviteAcceptScreen, LoginScreen, SetupScreen } from "@/features/auth/Au
 import { CrmHome } from "@/features/home/CrmHome";
 import { PageView } from "@/features/pages/PageView";
 import { DatabaseView } from "@/features/db/DatabaseView";
-import { VaultView } from "@/features/vault/VaultView";
+import { GraphPage } from "@/features/vault/GraphPage";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { useSession } from "@/state/session";
 import { Loading } from "@/ui/primitives";
@@ -36,7 +36,7 @@ export function AppRoutes() {
         <Route path="board" element={<BoardLens />} />
         <Route path="page/*" element={<PageView />} />
         <Route path="db/:slug" element={<DatabaseView />} />
-        <Route path="vault" element={<VaultView />} />
+        <Route path="graph" element={<GraphPage />} />
         <Route path="settings" element={<Navigate to="members" replace />} />
         <Route path="settings/:tab" element={<SettingsRoute />} />
         <Route path="*" element={<Navigate to="." replace />} />

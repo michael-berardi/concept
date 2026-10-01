@@ -207,7 +207,7 @@ export function CardModal({
                     {tone === "overdue" ? <span style={{ color: "var(--danger)", marginLeft: "auto" }}>overdue</span> : tone === "today" ? <span style={{ color: "var(--warn)", marginLeft: "auto" }}>today</span> : null}
                   </span>
                   <div style={{ fontSize: 13.5 }}>
-                    <PropertyEditor db={db} prop={p} value={draft[p.key]} onCommit={(v) => commit(p.key, v)} />
+                    <PropertyEditor ws={ws} db={db} prop={p} value={draft[p.key]} onCommit={(v) => commit(p.key, v)} />
                   </div>
                 </label>
               );

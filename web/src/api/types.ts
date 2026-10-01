@@ -210,7 +210,7 @@ export interface GraphResult {
 }
 
 export interface LinksResult {
-  outgoing: { target: string; title?: string; resolved: boolean }[];
+  outgoing: { target: string; path?: string; title?: string; resolved: boolean }[];
   backlinks: { path: string; title: string }[];
   unresolved: string[];
 }

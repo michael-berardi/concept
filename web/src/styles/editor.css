@@ -135,3 +135,70 @@
 .wiki-hint {
   color: var(--text-3);
 }
+
+/* wiki links: real inline links; brackets hide until the caret enters */
+.block-editor .tiptap .wiki-link {
+  color: var(--accent);
+  cursor: pointer;
+  border-bottom: 1px solid var(--accent-soft);
+}
+.block-editor .tiptap .wiki-link:hover {
+  border-bottom-color: var(--accent);
+}
+.block-editor .tiptap .wiki-hide {
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+/* task lists: checkbox sits on the text baseline */
+.block-editor .tiptap ul[data-type="taskList"] li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 0;
+}
+.block-editor .tiptap ul[data-type="taskList"] li > label {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 1.65em;
+  user-select: none;
+}
+.block-editor .tiptap ul[data-type="taskList"] li > label input[type="checkbox"] {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+}
+.block-editor .tiptap ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.block-editor .tiptap ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+.block-editor .tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.block-editor .tiptap li > p {
+  margin: 0;
+}
+.block-editor .tiptap ul:not([data-type="taskList"]) li::marker {
+  color: var(--text-3);
+}
+
+.block-editor .tiptap td > p,
+.block-editor .tiptap th > p { margin: 0; }
+.block-editor .tiptap table { margin: 1em 0; }
+.bubble {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: var(--shadow-pop);
+  transform: translate(-50%, -100%);
+}

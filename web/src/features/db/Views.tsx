@@ -9,8 +9,9 @@ import { byRank } from "@/lib/rank";
 /* ------------------------------ Table ------------------------------ */
 
 export function TableView({
-  db, viewId, rows, onCommitProp, onOpenCard, onNewRow, onDeleteRow,
+  ws, db, viewId, rows, onCommitProp, onOpenCard, onNewRow, onDeleteRow,
 }: {
+  ws?: string;
   db: Database;
   viewId: string;
   rows: DbRow[];
@@ -60,7 +61,7 @@ export function TableView({
             <tr key={r.id} className="db-row" onClick={() => onOpenCard(r)}>
               {cols.map((c) => (
                 <td key={c.key} onClick={(e) => c.type === "title" && onOpenCard(r)}>
-                  <PropertyEditor db={db} prop={c} value={r.properties[c.key]} onCommit={(v) => onCommitProp(r, c.key, v)} />
+                  <PropertyEditor ws={ws} db={db} prop={c} value={r.properties[c.key]} onCommit={(v) => onCommitProp(r, c.key, v)} />
                 </td>
               ))}
               <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right", position: "relative" }}>

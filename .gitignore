@@ -8,3 +8,7 @@ server/public
 macos/**/.build
 *.sqlite*
 data/
+web/.shots-tmp/
+macos/screenshots/
+macos/dist/
+macos/Concept.app/

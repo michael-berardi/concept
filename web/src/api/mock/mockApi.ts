@@ -235,12 +235,13 @@ interface SeedPage {
   icon?: string;
   body: string;
   updatedAt: string;
+  properties?: Record<string, unknown>;
 }
 
 const seedPages: SeedPage[] = [
-  { path: "Pages/Studio Handbook.md", title: "Studio Handbook", body: handbookBody, updatedAt: iso(-3) },
-  { path: "Pages/Projects/Aurora Launch.md", title: "Aurora Launch", body: auroraBody, updatedAt: iso(-1) },
-  { path: "Pages/Projects/Weekly Sync.md", title: "Weekly Sync", body: syncBody, updatedAt: iso(0) },
+  { path: "Pages/Studio Handbook.md", title: "Studio Handbook", body: handbookBody, updatedAt: iso(-3), properties: { status: "Evergreen", owner: "Ada Stone" } },
+  { path: "Pages/Projects/Aurora Launch.md", title: "Aurora Launch", body: auroraBody, updatedAt: iso(-1), properties: { status: "In flight", due: day(12), owner: "June Park", tags: ["launch"] } },
+  { path: "Pages/Projects/Weekly Sync.md", title: "Weekly Sync", body: syncBody, updatedAt: iso(0), properties: { status: "Recurring", owner: "Mike Okafor", due: day(2) } },
 ];
 
 /* ------------------------------ store ------------------------------ */
@@ -349,6 +350,8 @@ function pageRecord(p: SeedPage): PageRecord {
   return {
     path: p.path,
     title: p.title,
+    icon: p.icon,
+    properties: p.properties ?? {},
     body: p.body,
     contentHash: `h_${p.path.length}_${p.body.length}`,
     updatedAt: p.updatedAt,
@@ -541,7 +544,7 @@ export function createMockApi(): Api {
       const parentPrefix = input.parent ? input.parent + "/" : "Pages/";
       const path = (input.parent ? parentPrefix : "Pages/") + `${input.title}.md`;
       if (findPage(path)) bad("already_exists", `page ${path} already exists`);
-      const p: SeedPage = { path, title: input.title, icon: input.icon, body: input.body ?? "", updatedAt: iso(0) };
+      const p: SeedPage = { path, title: input.title, icon: input.icon, body: input.body ?? "", updatedAt: iso(0), properties: (input as { properties?: Record<string, unknown> }).properties };
       store.pages.push(p);
       emit("change", path);
       return pageRecord(p);
@@ -553,6 +556,7 @@ export function createMockApi(): Api {
       if (patch.title !== undefined) p.title = patch.title;
       if (patch.body !== undefined) p.body = patch.body;
       if (patch.icon !== undefined) p.icon = patch.icon;
+      if (patch.properties) p.properties = { ...(p.properties ?? {}), ...patch.properties };
       p.updatedAt = iso(0);
       store.activity.unshift({ id: uid("act"), userId: "u_ada", userName: "Ada Stone", action: "edited", path, createdAt: iso(0) });
       emit("change", path);
@@ -739,7 +743,7 @@ export function createMockApi(): Api {
       await wait(40);
       const page = findPage(path);
       if (page) {
-        const fm = frontmatter({ title: page.title }, "page");
+        const fm = frontmatter({ title: page.title, ...(page.properties ?? {}) }, "page");
         return { path, content: `${fm}\n\n${page.body}`, contentHash: `vf_${page.body.length}`, updatedAt: page.updatedAt };
       }
       const rec = recordFile(path);

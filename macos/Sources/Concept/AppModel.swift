@@ -20,7 +20,6 @@ struct CardItem: Identifiable, Equatable {
 final class AppModel {
     enum Mode: String, CaseIterable, Identifiable {
         case workspace = "Workspace"
-        case vault = "Vault"
         case board = "Board"
         var id: String { rawValue }
     }
@@ -40,6 +39,17 @@ final class AppModel {
     var activeTab: String?
     var readingMode = false
     var showGraph = false
+    var showRightPanel = true
+    /// Back/forward navigation history over visited paths.
+    private(set) var history: [String] = []
+    private(set) var historyIndex: Int = -1
+    /// Recency-ordered visited pages (for Home).
+    private(set) var recentPaths: [String] = []
+    var pinnedPaths: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "pinnedPaths-\(vault?.url.path ?? "")") ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "pinnedPaths-\(vault?.url.path ?? "")") }
+    }
+    var quickSwitcherWikiMode = false
     var showInspector = true
     var showQuickSwitcher = false
     var cardSheet: String?
@@ -83,16 +93,17 @@ final class AppModel {
             openVault(at: URL(fileURLWithPath: recent))
         }
         switch environment["CONCEPT_MODE"] {
-        case "vault": mode = .vault
         case "board": mode = .board
         default: break
         }
         if let db = environment["CONCEPT_DATABASE"] { selectedDatabase = db }
         if environment["CONCEPT_SWITCHER"] == "1" { showQuickSwitcher = true }
-        if environment["CONCEPT_GRAPH"] == "1" { mode = .vault; showGraph = true }
+        if environment["CONCEPT_GRAPH"] == "1" { showGraph = true }
+        if environment["CONCEPT_PANEL"] == "0" { showRightPanel = false }
         if let path = environment["CONCEPT_CARD"], !path.isEmpty {
             cardSheet = path
         }
+        if let home = environment["CONCEPT_HOME"], home == "1" { selectedPage = nil }
     }
 
     // MARK: - Recents
@@ -189,6 +200,50 @@ final class AppModel {
         activeTab = path
         selectedPage = path
         selectedFile = path
+        recordVisit(path)
+    }
+
+    private func recordVisit(_ path: String) {
+        recentPaths.removeAll { $0 == path }
+        recentPaths.insert(path, at: 0)
+        if recentPaths.count > 24 { recentPaths.removeLast(recentPaths.count - 24) }
+        if historyIndex >= 0 && historyIndex < history.count - 1 {
+            history.removeSubrange((historyIndex + 1)...)
+        }
+        if history.last != path {
+            history.append(path)
+            historyIndex = history.count - 1
+        }
+    }
+
+    func navigateBack() {
+        guard historyIndex > 0 else { return }
+        historyIndex -= 1
+        jumpWithoutHistory(history[historyIndex])
+    }
+
+    func navigateForward() {
+        guard historyIndex < history.count - 1 else { return }
+        historyIndex += 1
+        jumpWithoutHistory(history[historyIndex])
+    }
+
+    var canGoBack: Bool { historyIndex > 0 }
+    var canGoForward: Bool { historyIndex < history.count - 1 }
+
+    private func jumpWithoutHistory(_ path: String) {
+        if !openTabs.contains(where: { $0.path == path }) {
+            openTabs.append(OpenTab(path: path))
+        }
+        activeTab = path
+        selectedPage = path
+        selectedFile = path
+    }
+
+    func togglePin(_ path: String) {
+        var pins = pinnedPaths
+        if let idx = pins.firstIndex(of: path) { pins.remove(at: idx) } else { pins.insert(path, at: 0) }
+        pinnedPaths = pins
     }
 
     func closeTab(_ path: String) {
@@ -237,10 +292,16 @@ final class AppModel {
         }
     }
 
-    func newPage(title: String) {
+    func newPage(title: String, under directory: String? = nil) {
         guard let vault else { return }
         do {
-            let page = try vault.createPage(title: title.isEmpty ? "Untitled" : title)
+            let page: PageRef
+            if let directory, directory.hasPrefix("Pages/") {
+                page = try vault.createPage(title: title.isEmpty ? "Untitled" : title,
+                                            parentPagePath: directory + ".md")
+            } else {
+                page = try vault.createPage(title: title.isEmpty ? "Untitled" : title)
+            }
             rescan()
             open(path: page.path)
         } catch let error as ConceptError {
@@ -275,6 +336,67 @@ final class AppModel {
             lastError = (error.code, error.message)
         } catch {
             lastError = ("database.create_failed", String(describing: error))
+        }
+    }
+
+    /// Notion-style inline rename: moves the file on disk.
+    func rename(path: String, to newTitle: String) {
+        guard let vault else { return }
+        let clean = newTitle.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty else { return }
+        do {
+            var doc = try vault.readDocument(relativePath: path)
+            doc.set("title", clean)
+            let directory = (path as NSString).deletingLastPathComponent
+            let ext = (path as NSString).pathExtension
+            let target = directory + "/" + clean + (ext.isEmpty ? "" : "." + ext)
+            if target == path {
+                try vault.writeDocument(relativePath: path, document: doc)
+            } else {
+                guard !vault.fileManager.fileExists(atPath: vault.absoluteURL(target).path) else {
+                    lastError = ("path.exists", "A file named '\(clean)' already exists in this folder")
+                    return
+                }
+                let source = vault.absoluteURL(path)
+                try vault.fileManager.moveItem(at: source, to: vault.absoluteURL(target))
+                try vault.writeDocument(relativePath: target, document: doc)
+                if let idx = openTabs.firstIndex(where: { $0.path == path }) {
+                    openTabs[idx] = OpenTab(path: target)
+                }
+                if activeTab == path { activeTab = target }
+                if selectedPage == path { selectedPage = target }
+                if selectedFile == path { selectedFile = target }
+            }
+            rescan()
+        } catch let error as ConceptError {
+            lastError = (error.code, error.message)
+        } catch {
+            lastError = ("path.rename_failed", String(describing: error))
+        }
+    }
+
+    /// Moves a Markdown file into another directory shown in the tree.
+    func moveFile(path: String, toDirectory directory: String) {
+        guard let vault else { return }
+        guard path != directory else { return }
+        do {
+            let name = (path as NSString).lastPathComponent
+            let target = directory + "/" + name
+            guard !vault.fileManager.fileExists(atPath: vault.absoluteURL(target).path) else {
+                lastError = ("path.exists", "A file named '\(name)' already exists in \(directory)")
+                return
+            }
+            try vault.fileManager.moveItem(at: vault.absoluteURL(path), to: vault.absoluteURL(target))
+            if let idx = openTabs.firstIndex(where: { $0.path == path }) {
+                openTabs[idx] = OpenTab(path: target)
+            }
+            if activeTab == path { activeTab = target }
+            rescan()
+            open(path: target)
+        } catch let error as ConceptError {
+            lastError = (error.code, error.message)
+        } catch {
+            lastError = ("path.move_failed", String(describing: error))
         }
     }
 
