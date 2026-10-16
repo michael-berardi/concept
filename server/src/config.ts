@@ -51,7 +51,7 @@ export function loadConfig(): Config {
     publicDir: path.resolve(
       env("CONCEPT_PUBLIC_DIR", path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public")),
     ),
-    version: env("npm_package_version", "0.1.0"),
+    version: env("npm_package_version", "0.1.2"),
     syncDebounceMs: Number(env("CONCEPT_SYNC_DEBOUNCE_MS", "10000")),
     syncIntervalMs: Number(env("CONCEPT_SYNC_INTERVAL_MS", "60000")),
     watchDebounceMs: Number(env("CONCEPT_WATCH_DEBOUNCE_MS", "300")),

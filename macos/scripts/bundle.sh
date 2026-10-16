@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="0.1.0"
+VERSION="0.1.2"
 # Prefer a version from git tags when available (read-only).
 if command -v git >/dev/null 2>&1; then
   GIT_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || true)"

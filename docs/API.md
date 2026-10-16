@@ -34,7 +34,7 @@ curl localhost:8787/api/health
 ```
 
 ```json
-{ "ok": true, "version": "0.1.0", "setupRequired": false }
+{ "ok": true, "version": "0.1.2", "setupRequired": false }
 ```
 
 `setupRequired` is `true` until the first user registers.

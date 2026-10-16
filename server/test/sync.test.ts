@@ -108,8 +108,13 @@ test("git sync: conflicting edits keep both versions (conflict copies)", async (
   const inPlace = readFileSync(path.join(vault, "Pages", "Synced.md"), "utf8");
   assert.match(inPlace, /edited remotely/, "remote version not applied");
 
-  // status endpoint surfaces conflicts
-  const status = await admin.get(`/api/w/${slug}/sync/status`);
+  // status endpoint surfaces conflicts. The debounced sync queued by the local edit may still be
+  // running behind this run, so wait for it to settle before reading the status.
+  let status = await admin.get(`/api/w/${slug}/sync/status`);
+  await eventually(async () => {
+    status = await admin.get(`/api/w/${slug}/sync/status`);
+    return status.json.lastStatus !== "syncing";
+  });
   assert.equal(status.json.lastStatus, "conflict");
   assert.ok(status.json.conflicts.length >= 1);
 
