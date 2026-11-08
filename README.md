@@ -75,4 +75,4 @@ MIT
 
 ---
 
-Part of [Pareto Cybernetics](https://paretocybernetics.com/): free, private, open-source tools for working with AI agents.
+Part of [Pareto Cybernetics](https://paretocybernetics.com/projects/concept/): free, private, open-source tools for working with AI agents.
