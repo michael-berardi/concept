@@ -72,3 +72,7 @@ Run the tests: `pnpm -r test` (server, web) and `cd macos && swift test`.
 ## License
 
 MIT
+
+---
+
+Part of [Pareto Cybernetics](https://paretocybernetics.com/): free, private, open-source tools for working with AI agents.
