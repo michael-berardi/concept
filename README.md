@@ -9,6 +9,12 @@
   <img src="docs/screenshots/page.png" alt="A Concept page with outline, backlinks and a local graph" width="900">
 </p>
 
+## Download
+
+- **macOS 14 or later, Apple silicon and Intel:** [Concept-macos-universal.zip](https://github.com/michael-berardi/concept/releases/latest/download/Concept-macos-universal.zip). Unzip it and open `Concept.app`. The app is Developer ID-signed and notarized.
+- **Linux, Windows or a server:** run it with Docker, see [Run the server](#run-the-server).
+- All releases and checksums (`SHA256SUMS`): [latest release](https://github.com/michael-berardi/concept/releases/latest).
+
 ## What it is
 
 Concept combines the parts of Notion, Trello and Obsidian that people actually use, and keeps all of it in a folder of Markdown files you own.
@@ -42,7 +48,7 @@ Open <http://localhost:8787>. The first account you create becomes the admin and
 
 ## Use the Mac app
 
-Build it with `macos/scripts/bundle.sh`, or download `Concept-<version>.zip` from [Releases](https://github.com/michael-berardi/concept/releases). The app is signed ad hoc, so macOS asks you to confirm the first launch: right-click the app and choose Open. Unzip it in Finder (double-click); command-line `unzip` can break the signature.
+Download the app from the [Download](#download) section, or build it with `macos/scripts/bundle.sh` (a universal build; ad-hoc signed unless `CONCEPT_SIGNING_IDENTITY` and `CONCEPT_NOTARY_PROFILE` are set). Unzip it in Finder (double-click); command-line `unzip` can break the signature.
 
 Open any folder of Markdown, or create a vault from a template. It watches the folder, so edits from Retex, Obsidian or Git appear straight away.
 

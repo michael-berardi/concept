@@ -1,20 +1,28 @@
 #!/bin/bash
-# Builds Concept.app: release build of the Concept executable, Info.plist,
-# programmatically generated icon, ad-hoc codesign, and a zip in dist/.
+# Builds Concept.app: universal (arm64 + x86_64) release build of the Concept
+# executable, Info.plist, programmatically generated icon, codesign, and a zip in dist/.
+#
+# Signing: set CONCEPT_SIGNING_IDENTITY to a "Developer ID Application: ..." identity
+# for a release. Set CONCEPT_NOTARY_PROFILE (a notarytool keychain profile) to notarize
+# and staple. Without them the app is ad-hoc signed, for local builds only.
 # Usage: scripts/bundle.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="0.1.2"
+VERSION="0.1.3"
 # Prefer a version from git tags when available (read-only).
 if command -v git >/dev/null 2>&1; then
   GIT_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || true)"
   if [ -n "${GIT_VERSION:-}" ]; then VERSION="${GIT_VERSION#v}"; fi
 fi
 
-echo "==> swift build -c release"
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/Concept"
+SIGN_ID="${CONCEPT_SIGNING_IDENTITY:--}"
+if [ "$SIGN_ID" != "-" ] && [ -n "${CONCEPT_NOTARY_PROFILE:-}" ]; then NOTARIZE=1; else NOTARIZE=0; fi
+
+ARCHS=(--arch arm64 --arch x86_64)
+echo "==> swift build -c release (universal)"
+swift build -c release "${ARCHS[@]}"
+BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)/Concept"
 
 APP="Concept.app"
 CONTENTS="$APP/Contents"
@@ -105,11 +113,33 @@ done
 iconutil -c icns "$ICONSET" -o "$RESOURCES/Concept.icns"
 rm -rf "$ICONSET" "$ICON_TMP" /tmp/concept-icon-gen /tmp/concept-icon.swift
 
-echo "==> ad-hoc codesign"
-codesign --force --deep --sign - "$APP"
+# Extended attributes (quarantine, provenance) are not part of the code signature.
+# Drop them before signing so the zip carries no AppleDouble (._) entries.
+xattr -cr "$APP"
+
+if [ "$SIGN_ID" = "-" ]; then
+  echo "==> ad-hoc codesign (local build only; not notarized)"
+  codesign --force --deep --sign - "$APP"
+else
+  echo "==> Developer ID codesign"
+  codesign --force --deep --timestamp --options runtime --sign "$SIGN_ID" "$APP"
+fi
+codesign --verify --deep --strict "$APP"
+
+if [ "$NOTARIZE" = 1 ]; then
+  echo "==> notarizing (notarytool profile: $CONCEPT_NOTARY_PROFILE)"
+  NOTARY_TMP="$(mktemp -d /tmp/concept-notary-XXXXXX)"
+  trap 'rm -rf "$NOTARY_TMP"' EXIT
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$NOTARY_TMP/Concept.zip"
+  xcrun notarytool submit "$NOTARY_TMP/Concept.zip" --keychain-profile "$CONCEPT_NOTARY_PROFILE" --wait --output-format json > "$NOTARY_TMP/submit.json"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("status") == "Accepted", "notarization not accepted: " + str(d.get("status"))' "$NOTARY_TMP/submit.json"
+  xcrun stapler staple "$APP"
+  xcrun stapler validate "$APP"
+  spctl -a -vv -t exec "$APP"
+fi
 
 mkdir -p dist
-ZIP="dist/Concept-$VERSION.zip"
+ZIP="dist/Concept-macos-universal.zip"
 echo "==> zipping to $ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 echo "done: $APP and $ZIP"
