@@ -6,34 +6,40 @@ native addons, no background workers.
 ## One command with Docker
 
 ```sh
-CONCEPT_SECRET=$(openssl rand -base64 32) docker compose up -d
+docker compose up -d
 ```
 
+Run this from the cloned repository with Docker Compose installed.
 Then open `http://localhost:8787`. The first registered user becomes the
 instance admin.
 
 The compose file builds the image from this repository (web + server, see
 `Dockerfile`), stores everything in the `concept-data` volume, and health-checks
-`/api/health`.
+`/api/health`. The generated encryption secret persists in the data volume.
+If you set `CONCEPT_SECRET` instead, keep the same value across restarts;
+generating a new value on each run makes stored Git tokens unreadable.
 
 ## Run without Docker
 
-Requirements: **Node 22.5+** and **git** (for sync). No other dependencies.
+Requirements: **Node 22.13+**, **pnpm 10.27.0** and **git** (for sync).
+Node 22.13+ enables the built-in SQLite module without an experimental flag.
 
 ```sh
 # from the repository root
-pnpm install
-pnpm --filter @concept/web build     # builds the SPA into server/public
-pnpm --filter @concept/server build  # tsc -> server/dist
+pnpm install --frozen-lockfile
+pnpm build                         # web -> server/public; server -> server/dist
 
 # create an admin user and the CRM starter workspace
 cd server
-CONCEPT_DATA_DIR=/var/lib/concept CONCEPT_SECRET=$(openssl rand -base64 32) \
-  node dist/cli.js seed
+CONCEPT_DATA_DIR=./data node dist/cli.js seed
 
 # run
-CONCEPT_DATA_DIR=/var/lib/concept PORT=8787 node dist/index.js
+CONCEPT_DATA_DIR=./data PORT=8787 node dist/index.js
 ```
+
+The seed command prints the generated admin password. Save it before continuing.
+You can set `CONCEPT_ADMIN_EMAIL` and `CONCEPT_ADMIN_PASSWORD` when seeding instead.
+Keep the same data directory for both commands; use an absolute path in a service.
 
 For development: `pnpm --filter @concept/server dev` (tsx watch, reloads on
 change). The web app is served from `server/public`; rebuild the web package to
@@ -50,8 +56,7 @@ concept-server doctor                      # check data dir, SQLite+FTS5, git, w
 ```
 
 `doctor` exits non-zero if any check fails, so it is safe to use in monitoring.
-The CLI is also available as `node server/dist/cli.js` or via
-`pnpm --filter @concept/server exec concept-server`.
+The CLI is also available as `node server/dist/cli.js` as `node server/bin/concept-server.js` after building.
 
 ## Configuration (environment)
 
@@ -60,7 +65,7 @@ The CLI is also available as `node server/dist/cli.js` or via
 | `CONCEPT_DATA_DIR`     | `./data`                 | SQLite database + `workspaces/<slug>` vaults         |
 | `PORT`                 | `8787`                   | HTTP port                                            |
 | `CONCEPT_HOST`         | `0.0.0.0`                | Bind address                                         |
-| `CONCEPT_SECRET`       | generated + persisted    | Encrypts git tokens at rest (AES-256-GCM). Set it in production; losing it invalidates stored tokens. |
+| `CONCEPT_SECRET`       | generated + persisted    | Encrypts git tokens at rest (AES-256-GCM). Keep it stable; losing it invalidates stored tokens. |
 | `CONCEPT_OPEN_SIGNUP`  | `0`                      | `1` = register without an invite                     |
 | `CONCEPT_PUBLIC_DIR`   | `<package>/public`       | Static web app directory                             |
 | `CONCEPT_SYNC_DEBOUNCE_MS` | `10000`              | Delay before an edit is committed to git             |
@@ -125,6 +130,6 @@ the built-in recursive file watcher.
 ## Upgrading
 
 1. Back up `$CONCEPT_DATA_DIR` (or snapshot the volume).
-2. Pull the new image / code and restart. Migrations run automatically on
+2. Pull the new code and rebuild (`docker compose up -d --build`, or `pnpm install --frozen-lockfile && pnpm build`), then restart. Migrations run automatically on
    start (`CREATE TABLE IF NOT EXISTS`-style, additive only).
 3. `concept-server doctor` should report all checks passed.

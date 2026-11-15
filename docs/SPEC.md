@@ -1,5 +1,8 @@
 # Concept — product and technical spec
 
+This document includes design goals as well as implemented behavior. For setup
+and supported usage, start with the README and self-hosting guide.
+
 Concept is an open-source workspace that fuses Notion (pages, databases) and Trello (boards) and adds a CRM. Your data is a folder of Markdown files (a **vault**, compatible with [Retex](https://github.com/michael-berardi/retex)). You can self-host a multi-team server, use the native macOS app on a local vault, or both. Git is the sync layer.
 
 ## Principles
@@ -33,7 +36,7 @@ Row / page file:
 title: Acme renewal
 type: deal
 status: Proposal        # board column
-rank: 0|hzzzzz:         # fractional ordering key within a column (string, lexicographic)
+rank: "4"              # digit-only fractional key (string, lexicographic; no trailing zero)
 owner: mike
 company: "[[Acme]]"
 value: 12000
@@ -78,9 +81,9 @@ Card features (Trello side): checklists (Markdown task lists in body), labels (`
 - **Concurrency**: REST uses optimistic concurrency (`contentHash` in responses, `If-Match` on writes → 409 `conflict` with the current version). Live updates via SSE. No CRDT; the editor shows a merge banner on conflict.
 
 ## Git sync (server and macOS)
-- Workspace settings hold a remote URL and an access token (encrypted at rest with the instance secret).
+- Workspace settings hold a remote URL. Server access tokens are encrypted with the instance secret; the macOS app stores tokens in Keychain.
 - Server commits changed files (debounced 10 s) with the acting user as author, then `pull --rebase`/`push` every 60 s and on demand. Conflicts: never lose data — the losing side is saved as `<name>.conflict-<timestamp>.md` and surfaced in the UI and `/sync/status`.
-- macOS app does the same against its local vault via the `git` CLI.
+- macOS sync runs on demand via the Sync button against its local vault using the `git` CLI; it does not use the server's automatic schedule.
 
 ## Retex integration
 - The vault is a valid Retex vault: `retex doctor --vault <dir>` passes, `retex board/query/search` work, cards moved by `retex move` appear in Concept (file watcher).
@@ -130,7 +133,7 @@ Sidebar (workspaces switcher, search ⌘K, favourites, page tree, databases), bl
 `ConceptKit` (no UI): vault scan/watch (FSEvents), frontmatter parser/writer that preserves unknown keys and ordering, database schema, rank math, search index, git sync via `/usr/bin/git`, optional server mode (REST client). `Concept.app`: sidebar, page editor (Markdown source + live rendered preview), board (drag and drop), table, card sheet, ⌘K quick open, sync status + button, vault picker, Retex-compatible. Built with `swift build`; `scripts/bundle.sh` produces `Concept.app` and a zip.
 
 ## Quality bar
-Unit tests in every package (`pnpm -r test`, `swift test`), API integration tests including permission and path-safety regressions, and `retex doctor` passing on a vault written by Concept. Every view is checked at 375 px and 1920 px.
+Unit tests in every package (`pnpm -r test`, `swift test`), API integration tests including permission and path-safety regressions, and `retex doctor` passing on a vault written by Concept. Target viewport sizes are 375 px and 1920 px; automated tests do not establish visual coverage.
 
 ## Two views: Workspace and Board
 Concept has exactly two views, switched in the top bar (⌘1 / ⌘2).
