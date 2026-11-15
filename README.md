@@ -18,6 +18,8 @@ Open a Markdown folder, or create a vault from the CRM template. Edit a page or
 drag a deal to another board column; the changes are saved in your folder.
 Use the Sync button after configuring a Git remote.
 
+### From source
+
 **Self-hosted web app:** with Git and Docker Compose installed:
 
 ```sh
@@ -73,3 +75,7 @@ require `CONCEPT_SIGNING_IDENTITY` and `CONCEPT_NOTARY_PROFILE`.
 ## License
 
 MIT
+
+---
+
+Part of [Pareto Cybernetics](https://paretocybernetics.com/projects/concept/): free, private, open-source tools for working with AI agents.
