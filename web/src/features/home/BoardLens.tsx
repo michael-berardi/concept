@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api";
 import type { Database, DbRow } from "@/api";
-import { ErrorState, Loading, EmptyState } from "@/ui/primitives";
+import { ErrorState, Loading, EmptyState, useToast } from "@/ui/primitives";
 import { Icon } from "@/ui/icons";
 import { BoardView } from "@/features/db/BoardView";
 import { CardModal } from "@/features/db/CardModal";
@@ -17,6 +17,7 @@ export function BoardLens() {
   const [slug, setSlug] = useState<string | null>(params.get("db"));
   const [rows, setRows] = useState<DbRow[] | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     let on = true;
@@ -47,7 +48,11 @@ export function BoardLens() {
   }, [ws, slug]);
 
   if (error) return <ErrorState error={error} />;
-  if (!databases || !slug || !rows) return <Loading />;
+  if (!databases) return <Loading />;
+  if (databases.length === 0) {
+    return <EmptyState icon="board" title="No databases yet" hint="Create a database from the sidebar to use the board lens." />;
+  }
+  if (!slug || !rows) return <Loading />;
 
   const db = databases.find((d) => d.slug === slug);
   if (!db) {
@@ -56,6 +61,21 @@ export function BoardLens() {
   const boardView = db.views.find((v) => v.type === "board");
   const openCardPath = params.get("card");
   const openRow = rows.find((r) => r.path === openCardPath);
+
+  const newRow = async (group: string) => {
+    const titleProp = db.properties.find((p) => p.type === "title");
+    if (!titleProp) return;
+    const groupBy = boardView?.groupBy ?? db.properties.find((p) => p.type === "status")?.key ?? "status";
+    const props: Record<string, unknown> = { [titleProp.key]: "Untitled" };
+    if (group) props[groupBy] = group;
+    try {
+      const created = await api.createRow(ws, slug, { properties: props });
+      setRows((rs) => [...(rs ?? []), created]);
+      setParams({ db: slug, card: created.path });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not create row", "error");
+    }
+  };
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -81,7 +101,7 @@ export function BoardLens() {
           rows={rows}
           onRows={setRows}
           onOpenCard={(r) => setParams({ db: slug, card: r.path })}
-          onNewRow={() => {}}
+          onNewRow={newRow}
         />
       </div>
       {openRow ? (

@@ -120,16 +120,26 @@ export function BoardView({ ws, db, viewId, rows, onRows, onOpenCard, onNewRow }
 
     try {
       const idx = next.findIndex((r) => r.id === row.id);
-      await api.moveRow(ws, db.slug, row.id, {
-        status: (targetGroup ?? undefined) as string | undefined,
-        afterId: idx > 0 ? next[idx - 1].id : null,
-        beforeId: idx < next.length - 1 ? next[idx + 1].id : null,
-      });
+      if (groupBy === "status" && targetGroup !== null) {
+        await api.moveRow(ws, db.slug, row.id, {
+          status: targetGroup,
+          afterId: idx > 0 ? next[idx - 1].id : null,
+          beforeId: idx < next.length - 1 ? next[idx + 1].id : null,
+        });
+      } else if (targetGroup !== sourceGroup) {
+        // moveRow only accepts status; other groupings and the "no value" column use the row update.
+        await api.updateRow(ws, db.slug, row.id, { properties: { [groupBy]: targetGroup } }, row.contentHash);
+      }
       // The server owns ranks (it may resequence a column): take its list.
       onRows((await api.rows(ws, db.slug)).rows);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not move the card", "error");
-      onRows(rows); // revert to the last known server state
+      try {
+        // Refetch the full list: `rows` here is the filtered view.
+        onRows((await api.rows(ws, db.slug)).rows);
+      } catch {
+        // keep the current list if the refetch also fails
+      }
     } finally {
       setLocalOrder(null);
     }

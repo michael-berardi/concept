@@ -136,6 +136,32 @@ function SlashMenu({ editor, ws }: { editor: Editor; ws: string }) {
     return q ? SLASH_ITEMS.filter((i) => i.label.toLowerCase().includes(q) || i.id.includes(q)) : SLASH_ITEMS;
   }, [state.query]);
 
+  useEffect(() => setHot(0), [state.query]);
+
+  useEffect(() => {
+    const range = state.range;
+    if (!state.open || state.wiki || !range) return;
+    const onKey = (e: KeyboardEvent) => {
+      const n = items.length;
+      if (!n) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        setHot((h) => (h + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+      } else if (e.key === "Enter") {
+        editor.chain().focus().deleteRange(range).run();
+        items[Math.min(hot, n - 1)].run(editor);
+        setState((s) => ({ ...s, open: false }));
+      } else if (e.key === "Escape") {
+        setState((s) => ({ ...s, open: false }));
+      } else {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [state, items, hot, editor]);
+
   if (!state.open || !state.range) return null;
 
   const close = () => setState((s) => ({ ...s, open: false }));
@@ -294,7 +320,7 @@ export function BlockEditor({
       onClick={(e) => {
         const el = (e.target as HTMLElement).closest?.(".wiki-link") as HTMLElement | null;
         const target = el?.dataset.wiki;
-        if (target && onOpenWikiRef.current && !(e.metaKey && false)) {
+        if (target && onOpenWikiRef.current) {
           e.preventDefault();
           onOpenWikiRef.current(target);
         }
@@ -349,6 +375,7 @@ export function InlineToolbar({ editor }: { editor: Editor | null }) {
       {btn("code", "Code", editor.isActive("code"), () => editor.chain().focus().toggleCode().run())}
       {btn("link", "Link", editor.isActive("link"), () => {
         const href = window.prompt("Link URL", "https://");
+        if (href === null) return;
         if (href) editor.chain().focus().setLink({ href }).run();
         else editor.chain().focus().unsetLink().run();
       })}

@@ -155,7 +155,7 @@ export function DatabaseView() {
         width={280}
         items={[
           ...(filters ?? []).map((f, i) => ({
-            label: `${f.key} ${f.op} ${f.value ?? ""}`,
+            label: filterLabel(db, f),
             icon: "filter",
             onSelect: () => setFilters((fs) => (fs ?? []).filter((_, j) => j !== i)),
           })),
@@ -189,7 +189,7 @@ export function DatabaseView() {
         width={260}
         items={[
           ...(sorts ?? []).map((s, i) => ({
-            label: `${s.key} ${s.dir}`,
+            label: `${db.properties.find((p) => p.key === s.key)?.name ?? s.key} ${s.dir === "asc" ? "ascending" : "descending"}`,
             icon: "sort",
             onSelect: () => setSorts((ss) => (ss ?? []).filter((_, j) => j !== i)),
           })),
@@ -256,6 +256,25 @@ export function DatabaseView() {
       ) : null}
     </div>
   );
+}
+
+const FILTER_WORDS: Record<string, string> = {
+  eq: "is",
+  neq: "is not",
+  contains: "contains",
+  gt: "is greater than",
+  lt: "is less than",
+  gte: "is at least",
+  lte: "is at most",
+};
+
+function filterLabel(db: Database, f: Filter): string {
+  const prop = db.properties.find((p) => p.key === f.key);
+  const name = prop?.name ?? f.key;
+  if (f.op === "empty") return `${name} is empty`;
+  if (f.op === "notempty") return `${name} is not empty`;
+  const value = prop?.options?.find((o) => o.id === f.value)?.name ?? String(f.value ?? "");
+  return `${name} ${FILTER_WORDS[f.op] ?? f.op} ${value}`;
 }
 
 function viewIcon(type: string): string {

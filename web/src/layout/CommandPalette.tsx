@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/api";
 import type { Database, SearchResult, VaultFile } from "@/api";
 import { Icon } from "@/ui/icons";
-import { useTheme } from "@/ui/primitives";
+import { useDismiss, useTheme, useToast } from "@/ui/primitives";
+import { pageHref } from "@/layout/AppShell";
 import { flattenVaultTree } from "@/features/vault/vaultUtil";
 
 interface Cmd {
@@ -26,6 +27,8 @@ export function CommandPalette({
 }) {
   const nav = useNavigate();
   const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
+  const dismissRef = useDismiss(open, onClose);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [files, setFiles] = useState<VaultFile[]>([]);
@@ -71,13 +74,11 @@ export function CommandPalette({
 
   const cmds = useMemo<Cmd[]>(() => {
     const actions: Cmd[] = [
-      { id: "new-page", label: "New page", icon: "plus", section: "Actions", run: () => nav(`/w/${ws}/page/Pages/Untitled?action=new`) },
-      { id: "new-task", label: "New task", icon: "check", section: "Actions", run: () => nav(`/w/${ws}/db/tasks?new=1`) },
+      { id: "new-page", label: "New page", icon: "plus", section: "Actions", run: () => { api.createPage(ws, { title: "Untitled", parent: "Pages", body: "" }).then((p) => nav(pageHref(ws, p.path) + "?new=1")).catch((e) => toast(e instanceof Error ? e.message : "Could not create page", "error")); } },
       { id: "go-board", label: "Open board lens", icon: "board", section: "Actions", run: () => nav(`/w/${ws}/board`) },
-      { id: "go-vault", label: "Open vault", icon: "file", section: "Actions", run: () => nav(`/w/${ws}/vault`) },
       { id: "go-home", label: "CRM home", icon: "home", section: "Actions", run: () => nav(`/w/${ws}`) },
       { id: "go-settings", label: "Settings", icon: "settings", section: "Actions", run: () => nav(`/w/${ws}/settings/members`) },
-      { id: "graph", label: "Open graph view", icon: "graph", section: "Actions", run: () => nav(`/w/${ws}/vault?panel=graph`) },
+      { id: "graph", label: "Open graph view", icon: "graph", section: "Actions", run: () => nav(`/w/${ws}/graph`) },
     ];
     for (const t of ["oled", "graphite", "paper", "snow", "midnight", "forest"] as const) {
       actions.push({
@@ -93,7 +94,7 @@ export function CommandPalette({
     const ql = q.trim().toLowerCase();
     const filtered = ql ? actions.filter((a) => (a.label + " " + (a.keywords ?? "")).toLowerCase().includes(ql)) : actions;
     return filtered.slice(0, 8);
-  }, [q, nav, ws, setTheme, theme]);
+  }, [q, nav, ws, setTheme, theme, toast]);
 
   const fileHits = useMemo(() => {
     if (mode !== "files" || !q.trim()) return [];
@@ -135,14 +136,14 @@ export function CommandPalette({
     onClose();
     if (item.kind === "cmd") item.cmd.run();
     else if (item.kind === "db") nav(`/w/${ws}/db/${item.db.slug}`);
-    else if (item.kind === "file") nav(`/w/${ws}/vault?file=${encodeURIComponent(item.file.path)}`);
+    else if (item.kind === "file") nav(pageHref(ws, item.file.path));
     else if (item.hit.dbSlug) nav(`/w/${ws}/db/${item.hit.dbSlug}?card=${encodeURIComponent(item.hit.path)}`);
     else nav(`/w/${ws}/page/${item.hit.path.split("/").map(encodeURIComponent).join("/")}`);
   };
 
   return (
     <div className="overlay" style={{ padding: "10vh 16px 16px" }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-card" style={{ maxWidth: 560, minHeight: 0 }} role="dialog" aria-label="Command palette">
+      <div ref={dismissRef} className="modal-card" style={{ maxWidth: 560, minHeight: 0 }} role="dialog" aria-label="Command palette">
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
           <Icon name="search" size={16} className="faint" />
           <input

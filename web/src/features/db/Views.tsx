@@ -29,8 +29,7 @@ export function TableView({
     return (
       <EmptyState
         icon="table"
-        title="Empty table"
-        hint="Rows are Markdown files — one file per record, readable everywhere."
+        title={`No ${db.name.toLowerCase()} yet`}
         action={
           <button className="btn primary" onClick={onNewRow}>
             <Icon name="plus" size={14} /> New row
@@ -60,7 +59,13 @@ export function TableView({
           {sorted.map((r) => (
             <tr key={r.id} className="db-row" onClick={() => onOpenCard(r)}>
               {cols.map((c) => (
-                <td key={c.key} onClick={(e) => c.type === "title" && onOpenCard(r)}>
+                <td
+                  key={c.key}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (c.type === "title") onOpenCard(r);
+                  }}
+                >
                   <PropertyEditor ws={ws} db={db} prop={c} value={r.properties[c.key]} onCommit={(v) => onCommitProp(r, c.key, v)} />
                 </td>
               ))}
@@ -152,7 +157,7 @@ export function CalendarView({
   const first = new Date(base.getFullYear(), base.getMonth() + monthOffset, 1);
   const startDow = (first.getDay() + 6) % 7; // Monday start
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
 
   const byDay = useMemo(() => {
     const map = new Map<string, DbRow[]>();

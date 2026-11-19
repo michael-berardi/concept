@@ -254,7 +254,6 @@ struct SyncPill: View {
             switch model.syncState {
             case .idle:
                 Icon(name: .sync, size: 13)
-                Text("Sync").font(AppFont.small)
             case .syncing:
                 ProgressView().controlSize(.small)
                 Text("Syncing…").font(AppFont.small)

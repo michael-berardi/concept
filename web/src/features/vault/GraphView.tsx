@@ -155,7 +155,11 @@ export function GraphView({
     return null;
   };
 
-  const summary = useMemo(() => `${data?.nodes.length ?? 0} notes · ${data?.edges.length ?? 0} links`, [data]);
+  const summary = useMemo(() => {
+    const n = data?.nodes.length ?? 0;
+    const e = data?.edges.length ?? 0;
+    return `${n} ${n === 1 ? "note" : "notes"} · ${e} ${e === 1 ? "link" : "links"}`;
+  }, [data]);
 
   if (error) return <ErrorState error={error} />;
   if (!data) return <Loading />;

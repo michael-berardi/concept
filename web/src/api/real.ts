@@ -288,20 +288,91 @@ export class RealApi implements Api {
   }
 
   onEvent(ws: string, handler: (ev: { type: string; path?: string }) => void): () => void {
-    const es = new EventSource(`/api/w/${enc(ws)}/events`);
-    const onChange = (e: MessageEvent) => {
-      try {
-        handler(JSON.parse(e.data));
-      } catch {
-        handler({ type: e.type });
-      }
-    };
-    es.addEventListener("change", onChange as EventListener);
-    es.addEventListener("comment", onChange as EventListener);
-    es.addEventListener("sync", onChange as EventListener);
-    es.onerror = () => {
-      /* EventSource retries on its own; surfaced via next successful event */
-    };
-    return () => es.close();
+    return eventHub(ws).add(handler);
   }
+}
+
+type EventHandler = (ev: { type: string; path?: string }) => void;
+
+/**
+ * One event stream per workspace, shared by every subscriber and every tab.
+ * Browsers allow six HTTP/1.1 connections per host; a stream per component per tab
+ * used them all up and every later request hung. One tab holds the stream (Web Locks)
+ * and relays events to the others over a BroadcastChannel.
+ */
+const hubs = new Map<string, { add: (h: EventHandler) => () => void }>();
+
+function eventHub(ws: string) {
+  const existing = hubs.get(ws);
+  if (existing) return existing;
+  const handlers = new Set<EventHandler>();
+  const emit = (ev: { type: string; path?: string }) => handlers.forEach((h) => h(ev));
+  const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(`concept.events.${ws}`);
+  if (channel) channel.onmessage = (e) => emit(e.data);
+  let es: EventSource | null = null;
+  let release: (() => void) | null = null;
+  let wanted = false;
+  let pending = false;
+
+  const openStream = () => {
+    if (es || !wanted) return;
+    es = new EventSource(`/api/w/${enc(ws)}/events`);
+    const onChange = (e: MessageEvent) => {
+      let ev: { type: string; path?: string };
+      try {
+        ev = JSON.parse(e.data);
+      } catch {
+        ev = { type: e.type };
+      }
+      emit(ev);
+      channel?.postMessage(ev);
+    };
+    for (const name of ["change", "comment", "sync"]) es.addEventListener(name, onChange as EventListener);
+  };
+  const closeStream = () => {
+    es?.close();
+    es = null;
+  };
+  const start = () => {
+    wanted = true;
+    if (typeof navigator === "undefined" || !navigator.locks || !channel) return openStream();
+    if (release || pending) return;
+    pending = true;
+    void navigator.locks.request(`concept.events.${ws}`, () => {
+      pending = false;
+      if (!wanted) return;
+      openStream();
+      return new Promise<void>((resolve) => {
+        release = () => {
+          release = null;
+          closeStream();
+          resolve();
+        };
+      });
+    });
+  };
+  const stop = () => {
+    wanted = false;
+    if (release) release();
+    else closeStream();
+  };
+  if (typeof window !== "undefined") {
+    // A page kept in the back/forward cache must not keep its connection.
+    window.addEventListener("pagehide", stop);
+    window.addEventListener("pageshow", () => {
+      if (handlers.size) start();
+    });
+  }
+  const hub = {
+    add(h: EventHandler) {
+      handlers.add(h);
+      start();
+      return () => {
+        handlers.delete(h);
+        if (handlers.size === 0) stop();
+      };
+    },
+  };
+  hubs.set(ws, hub);
+  return hub;
 }

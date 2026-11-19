@@ -15,6 +15,10 @@ const TABS = [
   { id: "tokens", label: "API tokens", icon: "link" },
 ] as const;
 
+const ROLE_LABELS: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", guest: "Guest" };
+const LEVEL_LABELS: Record<string, string> = { none: "No access", view: "Can view", comment: "Can comment", edit: "Can edit", admin: "Admin" };
+const SUBJECT_LABELS: Record<string, string> = { team: "Team", user: "Person", workspace: "Workspace" };
+
 export function SettingsView({ tab }: { tab: string }) {
   const { ws = "" } = useParams();
   return (
@@ -43,6 +47,10 @@ function nav(id: string) {
   const ws = window.location.pathname.split("/")[2];
   window.history.pushState({}, "", `/w/${ws}/settings/${id}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function errorText(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
 }
 
 function Section({ title, sub, children, action }: { title: string; sub?: string; children?: React.ReactNode; action?: React.ReactNode }) {
@@ -89,9 +97,9 @@ function Members({ ws }: { ws: string }) {
         action={
           <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
             <select className="input" style={{ height: 26 }} value={role} onChange={(e) => setRole(e.target.value as typeof role)} aria-label="Invite role">
-              <option value="member">member</option>
-              <option value="admin">admin</option>
-              <option value="guest">guest</option>
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="guest">Guest</option>
             </select>
             <button
               className="btn sm primary"
@@ -101,7 +109,7 @@ function Members({ ws }: { ws: string }) {
                   setInvites((xs) => [...(xs ?? []), inv]);
                   toast("Invite link created");
                 } catch (e) {
-                  toast(e instanceof Error ? e.message : "Invite failed", "error");
+                  toast(errorText(e, "Invite failed"), "error");
                 }
               }}
             >
@@ -123,13 +131,17 @@ function Members({ ws }: { ws: string }) {
               value={m.role}
               aria-label={`Role for ${m.name}`}
               onChange={async (e) => {
-                await api.setMemberRole(ws, m.userId, e.target.value as Member["role"]);
-                load();
+                try {
+                  await api.setMemberRole(ws, m.userId, e.target.value as Member["role"]);
+                  load();
+                } catch (err) {
+                  toast(errorText(err, "Could not change role"), "error");
+                }
               }}
             >
               {["owner", "admin", "member", "guest"].map((r) => (
                 <option key={r} value={r} disabled={r === "owner"}>
-                  {r}
+                  {ROLE_LABELS[r]}
                 </option>
               ))}
             </select>
@@ -145,12 +157,34 @@ function Members({ ws }: { ws: string }) {
             <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
               <Icon name="link" size={14} className="faint" />
               <code className="mono" style={{ flex: 1, fontSize: 12 }}>{window.location.origin}{i.url}</code>
-              <span className="badge">{i.role}</span>
+              <span className="badge">{ROLE_LABELS[i.role] ?? i.role}</span>
               <span className="faint" style={{ fontSize: 12 }}>expires {relativeTime(i.expiresAt)}</span>
-              <button className="tb-btn" aria-label="Copy invite" onClick={() => { navigator.clipboard?.writeText(window.location.origin + i.url); toast("Invite link copied"); }}>
+              <button
+                className="tb-btn"
+                aria-label="Copy invite"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(window.location.origin + i.url);
+                    toast("Invite link copied");
+                  } catch {
+                    toast("Could not copy the invite link", "error");
+                  }
+                }}
+              >
                 <Icon name="layers" size={13} />
               </button>
-              <button className="tb-btn" aria-label="Revoke invite" onClick={async () => { await api.deleteInvite(ws, i.id); setInvites((xs) => (xs ?? []).filter((x) => x.id !== i.id)); }}>
+              <button
+                className="tb-btn"
+                aria-label="Revoke invite"
+                onClick={async () => {
+                  try {
+                    await api.deleteInvite(ws, i.id);
+                    setInvites((xs) => (xs ?? []).filter((x) => x.id !== i.id));
+                  } catch (e) {
+                    toast(errorText(e, "Could not revoke invite"), "error");
+                  }
+                }}
+              >
                 <Icon name="trash" size={13} />
               </button>
             </div>
@@ -162,8 +196,10 @@ function Members({ ws }: { ws: string }) {
 }
 
 function Teams({ ws }: { ws: string }) {
+  const { toast } = useToast();
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [picks, setPicks] = useState<Record<string, string>>({});
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
     Promise.all([api.teams(ws), api.members(ws)])
@@ -190,8 +226,12 @@ function Teams({ ws }: { ws: string }) {
           onClick={async () => {
             const name = window.prompt("Team name");
             if (!name) return;
-            await api.createTeam(ws, name);
-            load();
+            try {
+              await api.createTeam(ws, name);
+              load();
+            } catch (e) {
+              toast(errorText(e, "Could not create team"), "error");
+            }
           }}
         >
           <Icon name="plus" size={13} /> New team
@@ -205,14 +245,36 @@ function Teams({ ws }: { ws: string }) {
             <strong style={{ fontSize: 13.5 }}>{t.name}</strong>
             <span className="faint" style={{ fontSize: 12 }}>{t.memberIds.length} members</span>
             <span style={{ flex: 1 }} />
+            <select
+              className="input"
+              style={{ height: 26, width: 150 }}
+              value={picks[t.id] ?? ""}
+              onChange={(e) => setPicks((p) => ({ ...p, [t.id]: e.target.value }))}
+              aria-label={`Member to add to ${t.name}`}
+            >
+              <option value="">Choose a member</option>
+              {members
+                .filter((m) => !t.memberIds.includes(m.userId))
+                .map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.name}
+                  </option>
+                ))}
+            </select>
             <button
               className="tb-btn"
               aria-label={`Add member to ${t.name}`}
+              disabled={!picks[t.id]}
               onClick={async () => {
-                const candidate = members.find((m) => !t.memberIds.includes(m.userId));
-                if (!candidate) return;
-                await api.teamAddMember(ws, t.id, candidate.userId);
-                load();
+                const userId = picks[t.id];
+                if (!userId) return;
+                try {
+                  await api.teamAddMember(ws, t.id, userId);
+                  setPicks((p) => ({ ...p, [t.id]: "" }));
+                  load();
+                } catch (e) {
+                  toast(errorText(e, "Could not add member"), "error");
+                }
               }}
             >
               <Icon name="plus" size={13} />
@@ -221,8 +283,12 @@ function Teams({ ws }: { ws: string }) {
               className="tb-btn"
               aria-label={`Delete ${t.name}`}
               onClick={async () => {
-                await api.deleteTeam(ws, t.id);
-                load();
+                try {
+                  await api.deleteTeam(ws, t.id);
+                  load();
+                } catch (e) {
+                  toast(errorText(e, "Could not delete team"), "error");
+                }
               }}
             >
               <Icon name="trash" size={13} />
@@ -232,7 +298,20 @@ function Teams({ ws }: { ws: string }) {
             {t.memberIds.map((id) => {
               const m = members.find((x) => x.userId === id);
               return (
-                <span key={id} className="pill" style={{ cursor: "pointer" }} title="Remove" onClick={async () => { await api.teamRemoveMember(ws, t.id, id); load(); }}>
+                <span
+                  key={id}
+                  className="pill"
+                  style={{ cursor: "pointer" }}
+                  title="Remove"
+                  onClick={async () => {
+                    try {
+                      await api.teamRemoveMember(ws, t.id, id);
+                      load();
+                    } catch (e) {
+                      toast(errorText(e, "Could not remove member"), "error");
+                    }
+                  }}
+                >
                   {m?.name ?? id} · ×
                 </span>
               );
@@ -245,17 +324,21 @@ function Teams({ ws }: { ws: string }) {
 }
 
 function Permissions({ ws }: { ws: string }) {
+  const { toast } = useToast();
   const [entries, setEntries] = useState<AclEntry[] | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [path, setPath] = useState("Pages/Sales");
   const [level, setLevel] = useState<AclEntry["level"]>("edit");
   const [subjectType, setSubjectType] = useState<AclEntry["subjectType"]>("team");
+  const [subjectId, setSubjectId] = useState("");
   const load = useCallback(() => {
-    Promise.all([api.acl(ws), api.teams(ws)])
-      .then(([a, t]) => {
+    Promise.all([api.acl(ws), api.teams(ws), api.members(ws)])
+      .then(([a, t, m]) => {
         setEntries(a);
         setTeams(t);
+        setMembers(m);
       })
       .catch(setError);
   }, [ws]);
@@ -265,42 +348,90 @@ function Permissions({ ws }: { ws: string }) {
   if (error) return <ErrorState error={error} retry={load} />;
   if (!entries) return <Loading />;
 
+  const subjects =
+    subjectType === "team"
+      ? teams.map((t) => ({ id: t.id, name: t.name }))
+      : subjectType === "user"
+        ? members.map((m) => ({ id: m.userId, name: m.name }))
+        : [];
+
   return (
     <>
       <Section title="Access by path" sub="Most specific prefix wins. Workspace default is edit for members, none for guests." />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, alignItems: "center", marginBottom: 14 }}>
-        <input className="input" value={path} onChange={(e) => setPath(e.target.value)} placeholder="Pages/Sales" aria-label="Path prefix" />
-        <select className="input" style={{ width: 110 }} value={subjectType} onChange={(e) => setSubjectType(e.target.value as typeof subjectType)} aria-label="Subject type">
-          <option value="team">team</option>
-          <option value="user">user</option>
-          <option value="workspace">workspace</option>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 14 }}>
+        <input className="input" style={{ flex: "1 1 100%" }} value={path} onChange={(e) => setPath(e.target.value)} placeholder="Pages/Sales" aria-label="Path prefix" />
+        <select
+          className="input"
+          style={{ width: 110 }}
+          value={subjectType}
+          onChange={(e) => {
+            setSubjectType(e.target.value as typeof subjectType);
+            setSubjectId("");
+          }}
+          aria-label="Subject type"
+        >
+          <option value="team">Team</option>
+          <option value="user">Person</option>
+          <option value="workspace">Workspace</option>
+        </select>
+        <select
+          className="input"
+          style={{ width: 170 }}
+          value={subjectType === "workspace" ? "" : subjectId}
+          disabled={subjectType === "workspace"}
+          onChange={(e) => setSubjectId(e.target.value)}
+          aria-label="Subject"
+        >
+          <option value="">{subjectType === "workspace" ? "Whole workspace" : subjectType === "team" ? "Choose a team" : "Choose a person"}</option>
+          {subjects.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
         </select>
         <select className="input" style={{ width: 150 }} value={level} onChange={(e) => setLevel(e.target.value as typeof level)} aria-label="Level">
           {["none", "view", "comment", "edit", "admin"].map((l) => (
-            <option key={l}>{l}</option>
+            <option key={l} value={l}>
+              {LEVEL_LABELS[l]}
+            </option>
           ))}
         </select>
         <button
           className="btn sm primary"
+          disabled={subjectType !== "workspace" && !subjectId}
           onClick={async () => {
-            const subjectId = subjectType === "team" ? teams[0]?.id ?? "" : "";
-            await api.putAcl(ws, { path, subjectType, subjectId, level });
-            load();
+            try {
+              await api.putAcl(ws, { path, subjectType, subjectId: subjectType === "workspace" ? "" : subjectId, level });
+              load();
+            } catch (e) {
+              toast(errorText(e, "Could not add rule"), "error");
+            }
           }}
         >
           Add rule
         </button>
       </div>
       {entries.length === 0 ? (
-        <p className="faint" style={{ fontSize: 13 }}>No explicit rules — workspace defaults apply.</p>
+        <p className="faint" style={{ fontSize: 13 }}>No rules yet.</p>
       ) : (
         entries.map((a) => (
           <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
             <Icon name="shield" size={14} className="faint" />
             <code className="mono" style={{ flex: 1, fontSize: 12 }}>{a.path}</code>
-            <span className="badge">{a.subjectType}: {a.subjectName ?? a.subjectId}</span>
-            <span className="badge">{a.level}</span>
-            <button className="tb-btn" aria-label="Delete rule" onClick={async () => { await api.deleteAcl(ws, a.id); load(); }}>
+            <span className="badge">{SUBJECT_LABELS[a.subjectType]}: {a.subjectName ?? a.subjectId}</span>
+            <span className="badge">{LEVEL_LABELS[a.level] ?? a.level}</span>
+            <button
+              className="tb-btn"
+              aria-label="Delete rule"
+              onClick={async () => {
+                try {
+                  await api.deleteAcl(ws, a.id);
+                  load();
+                } catch (e) {
+                  toast(errorText(e, "Could not delete rule"), "error");
+                }
+              }}
+            >
               <Icon name="trash" size={13} />
             </button>
           </div>
@@ -362,6 +493,8 @@ function Sync({ ws }: { ws: string }) {
                 await api.putSyncConfig(ws, { ...cfg, token: token || undefined });
                 toast("Sync settings saved");
                 setToken("");
+              } catch (e) {
+                toast(errorText(e, "Could not save sync settings"), "error");
               } finally {
                 setBusy(false);
               }
@@ -379,7 +512,7 @@ function Sync({ ws }: { ws: string }) {
                 setStatus(s);
                 toast("Sync finished");
               } catch (e) {
-                toast(e instanceof Error ? e.message : "Sync failed", "error");
+                toast(errorText(e, "Sync failed"), "error");
               } finally {
                 setBusy(false);
               }
@@ -423,10 +556,15 @@ function Tokens() {
   const { toast } = useToast();
   const [tokens, setTokens] = useState<Token[] | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
-  const load = useCallback(() => api.tokens().then(setTokens).catch(() => setTokens([])), []);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(() => {
+    setError(null);
+    api.tokens().then(setTokens).catch(setError);
+  }, []);
   useEffect(() => {
     load();
   }, [load]);
+  if (error) return <ErrorState error={error} retry={load} />;
   if (!tokens) return <Loading />;
   return (
     <Section
@@ -437,9 +575,13 @@ function Tokens() {
           className="btn sm"
           style={{ marginLeft: "auto" }}
           onClick={async () => {
-            const t = await api.createToken("CLI");
-            setTokens((xs) => [...(xs ?? []), t]);
-            setSecret(t.secret ?? null);
+            try {
+              const t = await api.createToken("CLI");
+              setTokens((xs) => [...(xs ?? []), t]);
+              setSecret(t.secret ?? null);
+            } catch (e) {
+              toast(errorText(e, "Could not create token"), "error");
+            }
           }}
         >
           <Icon name="plus" size={13} /> New token
@@ -449,7 +591,18 @@ function Tokens() {
       {secret ? (
         <div className="mono" style={{ fontSize: 12.5, border: "1px solid var(--ok)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, color: "var(--ok)" }}>
           {secret}
-          <button className="tb-btn" style={{ marginLeft: 8 }} onClick={() => { navigator.clipboard?.writeText(secret); toast("Token copied"); }}>
+          <button
+            className="tb-btn"
+            style={{ marginLeft: 8 }}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(secret);
+                toast("Token copied");
+              } catch {
+                toast("Could not copy the token", "error");
+              }
+            }}
+          >
             copy
           </button>
         </div>
@@ -463,7 +616,18 @@ function Tokens() {
             <span style={{ flex: 1, fontSize: 13.5 }}>{t.name}</span>
             <code className="mono faint" style={{ fontSize: 12 }}>{t.prefix}…</code>
             <span className="faint" style={{ fontSize: 12 }}>{relativeTime(t.createdAt)}</span>
-            <button className="tb-btn" aria-label="Revoke token" onClick={async () => { await api.deleteToken(t.id); load(); }}>
+            <button
+              className="tb-btn"
+              aria-label="Revoke token"
+              onClick={async () => {
+                try {
+                  await api.deleteToken(t.id);
+                  load();
+                } catch (e) {
+                  toast(errorText(e, "Could not revoke token"), "error");
+                }
+              }}
+            >
               <Icon name="trash" size={13} />
             </button>
           </div>

@@ -36,7 +36,7 @@ export interface MenuItemDef {
   label?: string;
   icon?: string;
   danger?: boolean;
-  onSelect?: () => void;
+  onSelect?: () => void | Promise<void>;
   separator?: boolean;
   hint?: string;
   checked?: boolean;
@@ -51,6 +51,7 @@ export function Menu({
   items: MenuItemDef[];
   width?: number;
 }) {
+  const { toast } = useToast();
   const ref = useDismiss(open, onClose);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
@@ -75,7 +76,10 @@ export function Menu({
             className={`menu-item${it.danger ? " danger" : ""}`}
             onClick={() => {
               onClose();
-              it.onSelect?.();
+              // A menu action that fails must say so; none of the callers catch.
+              Promise.resolve()
+                .then(() => it.onSelect?.())
+                .catch((e) => toast(e instanceof Error ? e.message : `${it.label ?? "Action"} failed`, "error"));
             }}
           >
             {it.icon ? <Icon name={it.icon} size={15} /> : it.checked ? <Icon name="check" size={15} /> : <span style={{ width: 15 }} />}

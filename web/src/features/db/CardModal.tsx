@@ -25,6 +25,8 @@ export function CardModal({
   const [bodyReady, setBodyReady] = useState(row.body !== undefined);
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
+  const [commentsErr, setCommentsErr] = useState(false);
+  const [activityErr, setActivityErr] = useState(false);
   const [commentText, setCommentText] = useState("");
   const hashRef = useRef(row.contentHash);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -53,13 +55,19 @@ export function CardModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, row.path]);
 
+  const loadComments = () => {
+    setCommentsErr(false);
+    api.comments(ws, row.path).then(setComments).catch(() => setCommentsErr(true));
+  };
+  const loadActivity = () => {
+    setActivityErr(false);
+    api.activity(ws, row.path, 12).then(setActivity).catch(() => setActivityErr(true));
+  };
+
   useEffect(() => {
-    Promise.all([api.comments(ws, row.path), api.activity(ws, row.path, 12)])
-      .then(([c, a]) => {
-        setComments(c);
-        setActivity(a);
-      })
-      .catch((e) => setErr(e));
+    loadComments();
+    loadActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, row.path]);
 
   // Saves are serialised so each one carries the hash the previous one produced.
@@ -179,7 +187,7 @@ export function CardModal({
             </div>
             {pane === "comments" ? (
               comments === null ? (
-                <Loading />
+                commentsErr ? <PaneError onRetry={loadComments} /> : <Loading />
               ) : comments.length === 0 ? (
                 <p className="faint" style={{ fontSize: 13, margin: "4px 0 10px" }}>No comments yet.</p>
               ) : (
@@ -198,7 +206,7 @@ export function CardModal({
                 </div>
               )
             ) : activity === null ? (
-              <Loading />
+              activityErr ? <PaneError onRetry={loadActivity} /> : <Loading />
             ) : activity.length === 0 ? (
               <p className="faint" style={{ fontSize: 13, margin: "4px 0 10px" }}>No activity recorded.</p>
             ) : (
@@ -207,8 +215,7 @@ export function CardModal({
                   <div key={a.id} style={{ fontSize: 12.5, color: "var(--text-2)", display: "flex", gap: 8 }}>
                     <Icon name="clock" size={13} className="faint" />
                     <span>
-                      <strong style={{ fontWeight: 550, color: "var(--text)" }}>{a.userName ?? a.userId}</strong> {a.action}
-                      {a.detail ? ` — ${a.detail}` : ""}
+                      <strong style={{ fontWeight: 550, color: "var(--text)" }}>{a.userName ?? a.userId}</strong> {activitySentence(a)}
                     </span>
                     <span className="faint" style={{ marginLeft: "auto" }}>{relativeTime(a.createdAt)}</span>
                   </div>
@@ -269,6 +276,39 @@ function Section({ label, children }: { label?: string; children: React.ReactNod
       ) : null}
       {children}
     </div>
+  );
+}
+
+const ACTIVITY_TEXT: Record<string, string> = {
+  "page.created": "created a page",
+  "page.updated": "edited a page",
+  "page.deleted": "deleted a page",
+  "page.moved": "moved a page",
+  "database.created": "created a database",
+  "database.deleted": "deleted a database",
+  "row.created": "created this card",
+  "row.updated": "updated this card",
+  "row.deleted": "deleted this card",
+  "row.moved": "moved this card",
+  "attachment.uploaded": "uploaded an attachment",
+  "vault.file.saved": "saved a file",
+  "vault.file.deleted": "deleted a file",
+  "workspace.exported": "exported the workspace",
+  "workspace.imported": "imported files into the workspace",
+};
+
+function activitySentence(a: ActivityEntry): string {
+  const detail = a.detail ?? "";
+  if (a.action === "row.moved" && detail.startsWith("status=")) return `moved this card to ${detail.slice("status=".length)}`;
+  const text = ACTIVITY_TEXT[a.action] ?? a.action.replace(/[._]/g, " ");
+  return detail ? `${text} — ${detail}` : text;
+}
+
+function PaneError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p className="faint" style={{ fontSize: 13, margin: "4px 0 10px" }}>
+      Could not load this. <button className="link-btn" onClick={onRetry}>Retry</button>
+    </p>
   );
 }
 
