@@ -12,6 +12,7 @@ import { api } from "@/api";
 import type { SearchResult } from "@/api";
 import { mdToDoc, docToMd } from "@/lib/markdown";
 import { WikiLink, applyWikiMarks } from "./wikiMark";
+import { pickerAction } from "./pickerNav";
 import { Icon } from "@/ui/icons";
 
 /* ------------------------- Slash + wiki picker ------------------------- */
@@ -136,31 +137,38 @@ function SlashMenu({ editor, ws }: { editor: Editor; ws: string }) {
     return q ? SLASH_ITEMS.filter((i) => i.label.toLowerCase().includes(q) || i.id.includes(q)) : SLASH_ITEMS;
   }, [state.query]);
 
-  useEffect(() => setHot(0), [state.query]);
+  useEffect(() => setHot(0), [state.query, state.wiki]);
+
+  // Wiki picker choices: matching pages, then a link to the typed text.
+  const wikiTitles = useMemo(() => [...hits.map((h) => h.title), state.query], [hits, state.query]);
 
   useEffect(() => {
     const range = state.range;
-    if (!state.open || state.wiki || !range) return;
+    if (!state.open || !range || (!state.wiki && items.length === 0)) return;
+    const n = state.wiki ? wikiTitles.length : items.length;
     const onKey = (e: KeyboardEvent) => {
-      const n = items.length;
-      if (!n) return;
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        setHot((h) => (h + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
-      } else if (e.key === "Enter") {
-        editor.chain().focus().deleteRange(range).run();
-        items[Math.min(hot, n - 1)].run(editor);
-        setState((s) => ({ ...s, open: false }));
-      } else if (e.key === "Escape") {
+      if (e.isComposing || e.keyCode === 229) return;
+      const action = pickerAction(e.key, hot, n, state.wiki);
+      if (!action) return;
+      if (action.type === "move") {
+        setHot(action.hot);
+      } else if (action.type === "choose") {
+        if (state.wiki) {
+          editor.chain().focus().insertContentAt({ from: range.from, to: range.to }, `[[${wikiTitles[action.index]}]] `).run();
+        } else {
+          editor.chain().focus().deleteRange(range).run();
+          items[action.index].run(editor);
+        }
         setState((s) => ({ ...s, open: false }));
       } else {
-        return;
+        setState((s) => ({ ...s, open: false }));
       }
       e.preventDefault();
       e.stopPropagation();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [state, items, hot, editor]);
+  }, [state, items, wikiTitles, hot, editor]);
 
   if (!state.open || !state.range) return null;
 
@@ -182,17 +190,28 @@ function SlashMenu({ editor, ws }: { editor: Editor; ws: string }) {
   };
 
   if (state.wiki) {
+    const activeHot = Math.min(hot, wikiTitles.length - 1);
     return (
       <PickerPortal at={at} menuRef={menuRef} onDown={onDown}>
         <div className="side-label" style={{ padding: "6px 8px 2px" }}>Link to</div>
-        {hits.map((h) => (
-          <button key={h.path} className="menu-item" style={{ height: 34 }} onClick={() => applyWiki(h.title)}>
+        {hits.map((h, i) => (
+          <button
+            key={h.path}
+            className={`menu-item${i === activeHot ? " hot" : ""}`}
+            style={{ height: 34 }}
+            onMouseEnter={() => setHot(i)}
+            onClick={() => applyWiki(h.title)}
+          >
             <Icon name={h.dbSlug ? "database" : "page"} size={15} />
             <span style={{ flex: 1, color: "var(--text)" }}>{h.title}</span>
             {h.dbSlug ? <span className="faint" style={{ fontSize: 11 }}>{h.dbSlug}</span> : null}
           </button>
         ))}
-        <button className="menu-item" onClick={() => applyWiki(state.query)}>
+        <button
+          className={`menu-item${activeHot === hits.length ? " hot" : ""}`}
+          onMouseEnter={() => setHot(hits.length)}
+          onClick={() => applyWiki(state.query)}
+        >
           <Icon name="plus" size={15} />
           <span style={{ flex: 1, color: "var(--text)" }}>Link “{state.query}”</span>
         </button>
@@ -201,13 +220,14 @@ function SlashMenu({ editor, ws }: { editor: Editor; ws: string }) {
   }
 
   if (!items.length) return null;
+  const activeHot = Math.min(hot, items.length - 1);
   return (
     <PickerPortal at={at} menuRef={menuRef} onDown={onDown}>
       <div className="side-label" style={{ padding: "6px 8px 2px" }}>Blocks</div>
       {items.map((item, i) => (
         <button
           key={item.id}
-          className={`menu-item${i === hot ? " hot" : ""}`}
+          className={`menu-item${i === activeHot ? " hot" : ""}`}
           style={{ height: 40 }}
           onMouseEnter={() => setHot(i)}
           onClick={() => applySlash(item)}

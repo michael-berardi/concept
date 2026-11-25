@@ -34,7 +34,7 @@ curl localhost:8787/api/health
 ```
 
 ```json
-{ "ok": true, "version": "0.1.4", "setupRequired": false }
+{ "ok": true, "version": "0.1.5", "setupRequired": false }
 ```
 
 `setupRequired` is `true` until the first user registers.
@@ -277,7 +277,7 @@ POST   /api/w/:ws/databases/:db/rows {properties, body?}
 GET    /api/w/:ws/databases/:db/rows/:id
 PATCH  /api/w/:ws/databases/:db/rows/:id {properties?, body?}   (If-Match)
 DELETE /api/w/:ws/databases/:db/rows/:id
-POST   /api/w/:ws/databases/:db/rows/:id/move {status, beforeId?, afterId?}
+POST   /api/w/:ws/databases/:db/rows/:id/move {status?, groupBy?, group?, beforeId?, afterId?}
 ```
 
 ```sh
@@ -310,9 +310,12 @@ curl -b cookies.txt --get 'localhost:8787/api/w/acme-hq/databases/deals/rows' \
 
 #### Board move (drag and drop)
 
-`status` is the target column. `afterId` is the row to land after, `beforeId`
-the row to land before (either or both). The server recomputes the fractional
-`rank`; only the moved row's file is written.
+For status boards (`groupBy` omitted or `"status"`), `status` is the target
+column. For boards grouped by another property, pass `groupBy` (the property
+key) and `group` (the target value, or `null` for the no-value column).
+`afterId` is the row to land after, `beforeId` the row to land before (either
+or both). The server recomputes the fractional `rank`; only the moved row's
+file is written.
 
 ```sh
 curl -b cookies.txt -X POST \
@@ -321,8 +324,9 @@ curl -b cookies.txt -X POST \
   -d '{"status":"Won","afterId":"globex-pilot-91ab2c"}'
 ```
 
-If a column contains non-canonical ranks (written by `retex` or a text
-editor), the server transparently resequences that column first.
+If a column contains non-canonical or duplicate ranks (written by `retex`, a
+text editor, or rows collected from different statuses), the server
+transparently resequences that column first.
 
 ---
 

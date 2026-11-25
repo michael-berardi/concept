@@ -258,6 +258,77 @@ test("board move recomputes rank between neighbours and across columns", async (
   for (const r of ranks) assert.match(r, /^[1-9][0-9]*$/);
 });
 
+test("board move saves card order when grouped by a property other than status", async () => {
+  const mk = async (title: string, company: string) =>
+    (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title, company } })).json;
+  const a = await mk("Group A", "Zed");
+  const b = await mk("Group B", "Zed");
+  const c = await mk("Group C", "Zed");
+  const move = (id: string, body: Record<string, unknown>) =>
+    admin.post(`/api/w/crm-one/databases/deals/rows/${id}/move`, { groupBy: "company", ...body });
+
+  // C between A and B inside the group (rows had no rank: the group is resequenced first)
+  const m1 = await move(c.id, { group: "Zed", afterId: a.id, beforeId: b.id });
+  assert.equal(m1.status, 200);
+  assert.equal(m1.json.properties.company, "Zed");
+  // A to another group, B to the no-value column
+  const m2 = await move(a.id, { group: "Yan" });
+  assert.equal(m2.json.properties.company, "Yan");
+  const m3 = await move(b.id, { group: null });
+  assert.equal(m3.json.properties.company ?? null, null);
+
+  const list = await admin.get("/api/w/crm-one/databases/deals/rows");
+  const ids = (g: string) =>
+    list.json.rows.filter((r: any) => (r.properties.company ?? "") === g && /^Group /.test(r.properties.title)).map((r: any) => r.id);
+  assert.deepEqual(ids("Zed"), [c.id]);
+  assert.deepEqual(ids("Yan"), [a.id]);
+
+  // order inside one group survives a reload: put B back in Zed before C
+  const m4 = await move(b.id, { group: "Zed", beforeId: c.id });
+  assert.equal(m4.status, 200);
+  const l2 = await admin.get("/api/w/crm-one/databases/deals/rows");
+  const zed = l2.json.rows.filter((r: any) => r.properties.company === "Zed" && /^Group /.test(r.properties.title));
+  assert.deepEqual(zed.map((r: any) => r.id), [b.id, c.id]);
+
+  // rows from different status columns can share the same canonical rank;
+  // moving a card between them in a non-status group resequences cleanly.
+  const d1 = (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title: "Dup 1", status: "Lead", company: "Xyz", rank: "4" } })).json;
+  const d2 = (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title: "Dup 2", status: "Won", company: "Xyz", rank: "4" } })).json;
+  const d3 = (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title: "Dup 3", status: "Proposal", company: "Xyz", rank: "4" } })).json;
+  const mDup = await move(d3.id, { group: "Xyz", afterId: d1.id, beforeId: d2.id });
+  assert.equal(mDup.status, 200);
+  const l3 = await admin.get("/api/w/crm-one/databases/deals/rows");
+  const xyz = l3.json.rows.filter((r: any) => r.properties.company === "Xyz" && /^Dup /.test(r.properties.title));
+  assert.deepEqual(xyz.map((r: any) => r.id), [d1.id, d3.id, d2.id]);
+
+  // inverted neighbours in a non-status group are still rejected
+  const swapped = await move(d3.id, { group: "Xyz", afterId: d2.id, beforeId: d1.id });
+  assert.equal(swapped.status, 400);
+  assert.equal(swapped.json.error.code, "invalid_move");
+
+  // duplicate canonical ranks within a status column also resequence cleanly
+  const s1 = (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title: "SDup 1", status: "Qualification", rank: "4" } })).json;
+  const s2 = (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title: "SDup 2", status: "Qualification", rank: "4" } })).json;
+  const s3 = (await admin.post("/api/w/crm-one/databases/deals/rows", { properties: { title: "SDup 3", status: "Qualification", rank: "4" } })).json;
+  const mStatusDup = await admin.post(`/api/w/crm-one/databases/deals/rows/${s3.id}/move`, {
+    status: "Qualification",
+    afterId: s1.id,
+    beforeId: s2.id,
+  });
+  assert.equal(mStatusDup.status, 200);
+  const l4 = await admin.get("/api/w/crm-one/databases/deals/rows");
+  const qual = l4.json.rows.filter((r: any) => r.properties.status === "Qualification" && /^SDup /.test(r.properties.title));
+  assert.deepEqual(qual.map((r: any) => r.id), [s1.id, s3.id, s2.id]);
+
+  const badGroup = await move(a.id, { group: {} });
+  assert.equal(badGroup.status, 400);
+  assert.equal(badGroup.json.error.code, "invalid_group");
+
+  const bad = await move(a.id, { groupBy: "nope", group: "x" });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.json.error.code, "no_group_property");
+});
+
 test("FTS search, backlinks, graph, tags, links", async () => {
   const s = await admin.get("/api/w/crm-one/search?q=acme");
   assert.ok(s.json.results.length >= 1);

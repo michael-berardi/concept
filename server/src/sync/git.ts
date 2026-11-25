@@ -60,11 +60,20 @@ export function git(
   opts: { authorName?: string; authorEmail?: string; timeoutMs?: number } = {},
 ): Promise<GitResult> {
   const finalArgs = [...args];
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_ALLOW_PROTOCOL: process.env.CONCEPT_ALLOW_FILE_REMOTES === "1" ? "https:ssh:file" : "https:ssh",
+  };
   if (opts.authorName) {
     finalArgs.unshift("-c", `user.name=${opts.authorName}`);
+    env.GIT_AUTHOR_NAME = opts.authorName;
+    env.GIT_COMMITTER_NAME = opts.authorName;
   }
   if (opts.authorEmail) {
     finalArgs.unshift("-c", `user.email=${opts.authorEmail}`);
+    env.GIT_AUTHOR_EMAIL = opts.authorEmail;
+    env.GIT_COMMITTER_EMAIL = opts.authorEmail;
   }
   return new Promise((resolve) => {
     execFile(
@@ -74,11 +83,7 @@ export function git(
         cwd: vaultDir,
         timeout: opts.timeoutMs ?? 120_000,
         maxBuffer: 32 * 1024 * 1024,
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: "0",
-          GIT_ALLOW_PROTOCOL: process.env.CONCEPT_ALLOW_FILE_REMOTES === "1" ? "https:ssh:file" : "https:ssh",
-        },
+        env,
       },
       (err, stdout, stderr) => {
         const code = err ? ((err as any).code as number) ?? 1 : 0;

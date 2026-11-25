@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Client, makeApp, eventually, type TestEnv } from "./helpers.js";
+import { git as syncGit } from "../src/sync/git.js";
 
 let env: TestEnv;
 let admin: Client;
@@ -63,7 +64,26 @@ test("git sync: commits with user authorship, pushes to a bare repo", async () =
 
   await admin.post(`/api/w/${slug}/pages`, { title: "Synced", body: "written by concept" });
 
-  const run = await admin.post(`/api/w/${slug}/sync/run`);
+  // Host GIT_AUTHOR_* / GIT_COMMITTER_* env vars must not override per-user authorship.
+  const prevEnv = {
+    GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME,
+    GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL,
+    GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME,
+    GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL,
+  };
+  let run: Awaited<ReturnType<Client["post"]>>;
+  try {
+    process.env.GIT_AUTHOR_NAME = "Host Override";
+    process.env.GIT_AUTHOR_EMAIL = "host@override.invalid";
+    process.env.GIT_COMMITTER_NAME = "Host Override";
+    process.env.GIT_COMMITTER_EMAIL = "host@override.invalid";
+    run = await admin.post(`/api/w/${slug}/sync/run`);
+  } finally {
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
   assert.equal(run.status, 200);
   assert.equal(run.json.lastStatus, "ok", `sync failed: ${run.json.lastMessage}`);
 
@@ -75,9 +95,43 @@ test("git sync: commits with user authorship, pushes to a bare repo", async () =
   assert.ok(existsSync(clonedFile), "pushed page missing from clone");
   assert.match(readFileSync(clonedFile, "utf8"), /written by concept/);
 
-  // author attribution: the commit was made by the acting user
-  const log = await git(workClone, "log --format=%an|%ae -1");
-  assert.match(log.out, /admin@sync\.test/);
+  // author and committer attribution: the commit was made by the acting user, not host env
+  const log = await git(workClone, "log --format=%an|%ae|%cn|%ce -1");
+  const [an, ae, cn, ce] = log.out.trim().split("|");
+  assert.equal(ae, "admin@sync.test");
+  assert.equal(ce, "admin@sync.test");
+  assert.notEqual(an, "Host Override");
+  assert.notEqual(cn, "Host Override");
+});
+
+test("git helper preserves host GIT_* identity when author opts are omitted", async () => {
+  const repo = mkdtempSync(path.join(tmpdir(), "concept-git-env-"));
+  tmpDirs.push(repo);
+  assert.equal((await syncGit(repo, ["init", "-b", "main"])).code, 0);
+  writeFileSync(path.join(repo, "note.md"), "hello\n");
+  assert.equal((await syncGit(repo, ["add", "note.md"])).code, 0);
+
+  const prevEnv = {
+    GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME,
+    GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL,
+    GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME,
+    GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL,
+  };
+  try {
+    process.env.GIT_AUTHOR_NAME = "Env Author";
+    process.env.GIT_AUTHOR_EMAIL = "env-author@example.test";
+    process.env.GIT_COMMITTER_NAME = "Env Committer";
+    process.env.GIT_COMMITTER_EMAIL = "env-committer@example.test";
+    const res = await syncGit(repo, ["commit", "-m", "env identity"]);
+    assert.equal(res.code, 0, res.stderr);
+  } finally {
+    for (const [k, v] of Object.entries(prevEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+  const log = await syncGit(repo, ["log", "--format=%an|%ae|%cn|%ce", "-1"]);
+  assert.equal(log.stdout.trim(), "Env Author|env-author@example.test|Env Committer|env-committer@example.test");
 });
 
 test("git sync: conflicting edits keep both versions (conflict copies)", async () => {

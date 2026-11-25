@@ -6,6 +6,9 @@ import type {
 
 export interface RowMove {
   status?: string;
+  /** Board grouping property when it is not status; `group` is the target value (null = no value). */
+  groupBy?: string;
+  group?: string | null;
   beforeId?: string | null;
   afterId?: string | null;
 }

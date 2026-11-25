@@ -1013,10 +1013,16 @@ export function createApp(deps: AppDeps): Hono<Env> {
       { id: access.workspaceId, slug: access.slug },
       dbSlug,
       id,
-      { status: b.status, beforeId: b.beforeId ?? null, afterId: b.afterId ?? null },
+      {
+        status: b.status,
+        groupBy: b.groupBy,
+        group: b.group,
+        beforeId: b.beforeId ?? null,
+        afterId: b.afterId ?? null,
+      },
       actorLabel(c),
     );
-    logActivity(access.workspaceId, row.path, c.get("user"), "row.moved", `status=${b.status}`);
+    logActivity(access.workspaceId, row.path, c.get("user"), "row.moved", b.groupBy && b.groupBy !== "status" ? `${b.groupBy}=${b.group ?? ""}` : `status=${b.status}`);
     return c.json(row);
   });
 

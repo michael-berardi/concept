@@ -593,47 +593,119 @@ export class VaultEngine {
     ws: { id: string; slug: string },
     dbSlug: string,
     id: string,
-    input: { status: string; beforeId?: string | null; afterId?: string | null },
+    input: {
+      status?: string;
+      /** Property the board is grouped by; defaults to "status". */
+      groupBy?: string;
+      /** Target group value when groupBy is not "status"; null or "" is the no-value column. */
+      group?: string | null;
+      beforeId?: string | null;
+      afterId?: string | null;
+    },
     actor: string,
   ): RowPayload {
     const schema = this.getDatabase(ws, dbSlug);
-    const statusProp = schema.properties.find((pr) => pr.key === "status");
-    if (!statusProp) throw badRequest(`Database '${dbSlug}' has no status property`, "no_status");
-    if (input.status === undefined || input.status === null || String(input.status) === "") {
-      throw badRequest("status is required for a board move", "missing_status");
+    const groupBy = input.groupBy && input.groupBy !== "status" ? input.groupBy : "status";
+    if (typeof groupBy !== "string") {
+      throw badRequest("groupBy must be a property key string", "invalid_group_by");
     }
-    const targetStatus = String(input.status);
+    const groupProp = schema.properties.find((pr) => pr.key === groupBy);
+    if (!groupProp) {
+      throw badRequest(
+        groupBy === "status" ? `Database '${dbSlug}' has no status property` : `Database '${dbSlug}' has no property '${groupBy}'`,
+        groupBy === "status" ? "no_status" : "no_group_property",
+      );
+    }
+    let targetGroup: string;
+    if (groupBy === "status") {
+      if (input.status === undefined || input.status === null || String(input.status) === "") {
+        throw badRequest("status is required for a board move", "missing_status");
+      }
+      targetGroup = String(input.status);
+    } else {
+      if (input.group !== undefined && input.group !== null && typeof input.group === "object") {
+        throw badRequest("group must be a scalar value or null", "invalid_group");
+      }
+      targetGroup = input.group === undefined || input.group === null ? "" : String(input.group);
+    }
     const p = this.rowPathById(ws, dbSlug, id);
     const vaultDir = this.vaultDir(ws.slug);
     const buf = readFileIfExists(vaultDir, p);
     if (!buf) throw notFound(`No row '${id}'`);
     const { props, body } = parseDoc(buf.toString("utf8"));
 
+    const groupOf = (m: FileMeta): string =>
+      groupBy === "status" ? (m.status ?? "") : propGroupValue(m.properties[groupBy]);
     const neighborRank = (rid: string | null | undefined): string | undefined => {
       if (!rid) return undefined;
       const m = this.mustIndexRow(ws.id, this.rowPathById(ws, dbSlug, String(rid)));
-      return m.status === targetStatus ? (m.rank ?? undefined) : undefined;
+      return groupOf(m) === targetGroup ? (m.rank ?? undefined) : undefined;
     };
-    let beforeRank = neighborRank(input.beforeId);
-    let afterRank = neighborRank(input.afterId);
+
+    // If the column contains non-canonical or duplicate ranks (e.g. written by
+    // other tools, or rows of a board grouped by another property whose ranks
+    // came from different statuses), resequence it first so every pair of
+    // neighbours is strictly ordered and a fresh midpoint is guaranteed to exist.
+    if (groupBy === "status") {
+      if (needsResequence(this.db, ws.id, dbSlug, targetGroup)) {
+        this.resequenceColumn(ws, dbSlug, targetGroup);
+      }
+    } else {
+      const members = this.groupMembers(ws, dbSlug, groupBy, targetGroup, id);
+      if (membersNeedResequence(members)) {
+        this.resequencePaths(ws, members.map((m) => m.path));
+      }
+    }
+
+    const beforeRank = neighborRank(input.beforeId);
+    const afterRank = neighborRank(input.afterId);
     if (beforeRank !== undefined && afterRank !== undefined && !(afterRank < beforeRank)) {
       throw badRequest("beforeId must come after afterId in the column", "invalid_move");
     }
 
-    // If the column contains non-canonical ranks (e.g. written by other tools),
-    // resequence it first so a fresh midpoint is guaranteed to exist.
-    if (needsResequence(this.db, ws.id, dbSlug, targetStatus)) {
-      this.resequenceColumn(ws, dbSlug, targetStatus);
-      beforeRank = neighborRank(input.beforeId);
-      afterRank = neighborRank(input.afterId);
-    }
-
     const rank = moveRank(beforeRank, afterRank);
-    const next = applyPropUpdates(props, { status: targetStatus, rank });
+    const update: Props =
+      groupBy === "status" ? { status: targetGroup, rank } : { [groupBy]: targetGroup === "" ? null : targetGroup, rank };
+    const next = applyPropUpdates(props, update);
     next["updated"] = new Date().toISOString();
     atomicWrite(vaultDir, p, renderDoc(next, body));
     this.afterWrite(ws.slug, [p], actor);
     return toRowPayload(this.mustIndexRow(ws.id, p));
+  }
+
+  /** Non-archived rows of a database whose groupBy property equals the group value, in rank order, excluding one id. */
+  private groupMembers(
+    ws: { id: string; slug: string },
+    dbSlug: string,
+    groupBy: string,
+    group: string,
+    excludeId: string,
+  ): FileMeta[] {
+    const paths = (
+      this.db
+        .prepare(`SELECT path FROM files WHERE workspace_id = ? AND db_slug = ? AND archived = 0 ORDER BY rank, path`)
+        .all(ws.id, dbSlug) as any[]
+    ).map((r) => r.path);
+    const excludePath = this.rowPathById(ws, dbSlug, excludeId);
+    return paths
+      .filter((pth) => pth !== excludePath)
+      .map((pth) => this.mustIndexRow(ws.id, pth))
+      .filter((m) => propGroupValue(m.properties[groupBy]) === group);
+  }
+
+  /** Give the rows at these paths fresh canonical ranks, keeping their current order. */
+  private resequencePaths(ws: { id: string; slug: string }, paths: string[]): void {
+    const vaultDir = this.vaultDir(ws.slug);
+    const ranks = resequenceRanks(paths.length);
+    const changed: string[] = [];
+    paths.forEach((pth, i) => {
+      const buf = readFileIfExists(vaultDir, pth);
+      if (!buf) return;
+      const { props, body } = parseDoc(buf.toString("utf8"));
+      atomicWrite(vaultDir, pth, renderDoc(applyPropUpdates(props, { rank: ranks[i] }), body));
+      changed.push(pth);
+    });
+    if (changed.length) this.afterWrite(ws.slug, changed, "system:resequence");
   }
 
   /** Assign fresh canonical ranks to every row in a column, preserving order. */
@@ -1044,13 +1116,26 @@ function matchFilter(m: FileMeta, f: { key: string; op: string; value?: unknown 
   }
 }
 
+function propGroupValue(v: unknown): string {
+  return v === null || v === undefined ? "" : String(v);
+}
+
+function membersNeedResequence(members: { rank?: string | null }[]): boolean {
+  const seen = new Set<string>();
+  for (const m of members) {
+    if (!m.rank || !isRank(m.rank) || seen.has(m.rank)) return true;
+    seen.add(m.rank);
+  }
+  return false;
+}
+
 function needsResequence(db: DB, wsId: string, dbSlug: string, status: string): boolean {
   const rows = db
     .prepare(
       `SELECT rank FROM files WHERE workspace_id = ? AND db_slug = ? AND status = ? AND archived = 0`,
     )
     .all(wsId, dbSlug, status) as any[];
-  return rows.some((r) => r.rank === null || r.rank === "" || !isRank(r.rank));
+  return membersNeedResequence(rows);
 }
 
 function readdirSafe(dir: string): string[] {
