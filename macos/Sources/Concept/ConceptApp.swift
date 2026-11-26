@@ -3,7 +3,13 @@ import ConceptKit
 
 @main
 struct ConceptApp: App {
-    @State private var model = AppModel()
+    @State private var model: AppModel
+
+    init() {
+        let model = AppModel()
+        _model = State(initialValue: model)
+        Updates.shared.readyToRelaunch = { model.readyToRelaunch() }
+    }
 
     var body: some Scene {
         WindowGroup("Concept", id: "main") {
@@ -15,6 +21,10 @@ struct ConceptApp: App {
         .windowStyle(.automatic)
         .defaultSize(width: 1320, height: 820)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { Updates.shared.checkForUpdates() }
+                    .disabled(!Updates.shared.isAvailable)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Page") { model.newPage(title: "Untitled") }
                     .keyboardShortcut("n", modifiers: .command)
@@ -61,6 +71,10 @@ struct ConceptApp: App {
             }
         }
         .windowToolbarStyle(.unified)
+
+        Settings {
+            UpdatesSettingsView()
+        }
     }
 }
 

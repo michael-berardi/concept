@@ -4,6 +4,27 @@ All notable changes to Concept are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-26
+
+### Added
+
+- Mac app updates with Sparkle: one anonymous check a day, the standard update
+  window (Install Update, Remind Me Later, Skip This Version), **Check for
+  Updates…** in the app menu and **Settings → Updates**. Automatic installation
+  is off until you turn it on. Updates are verified with an EdDSA signature
+  before installing and relaunch only after drafts are saved.
+- Self-hosted servers check the latest GitHub release once a day and show
+  instance admins a notice with the upgrade command, **Later** and **Skip this
+  version**. `concept-server update --check` reports the same (exit 0, 10 or 1).
+  `CONCEPT_NO_UPDATE_CHECK=1` turns the check off. See `docs/updates.md`.
+- `PRIVACY.md`.
+
+### Changed
+
+- `macos/scripts/bundle.sh` takes the version from `Resources/Info.plist`,
+  embeds and signs Sparkle, refuses a release while `SUPublicEDKey` is the
+  placeholder, and writes `dist/appcast.xml`.
+
 ## [0.1.5] - 2026-11-25
 
 ### Added

@@ -7,6 +7,7 @@ import { EventBus } from "./events.js";
 import { SyncManager } from "./sync/syncer.js";
 import { VaultEngine } from "./vault/engine.js";
 import { createApp } from "./app.js";
+import { UpdateChecker, UPDATE_CHECK_INTERVAL_MS } from "./updates.js";
 import path from "node:path";
 import { existsSync } from "node:fs";
 
@@ -39,7 +40,13 @@ export function startServer(): void {
     },
     cfg.watchDebounceMs,
   );
-  const app = createApp({ cfg, db, engine, indexer, watcher, bus, sync });
+  const updates = new UpdateChecker({
+    dataDir: cfg.dataDir,
+    currentVersion: cfg.version,
+    disabled: cfg.noUpdateCheck,
+    apiUrl: cfg.updateApiUrl,
+  });
+  const app = createApp({ cfg, db, engine, indexer, watcher, bus, sync, updates });
 
   // Watch all existing workspace vaults for external edits (retex, git, editors).
   const workspaces = db.prepare(`SELECT id, slug FROM workspaces`).all() as any[];
@@ -66,12 +73,17 @@ export function startServer(): void {
     console.log(`  data dir : ${cfg.dataDir}`);
     console.log(`  public   : ${cfg.publicDir}`);
     console.log(`  listening: http://localhost:${info.port}`);
+    // Background only: a failed check is cached with its cause, never printed as noise.
+    void updates.check();
   });
+  const updateTimer = setInterval(() => void updates.check(), UPDATE_CHECK_INTERVAL_MS);
+  updateTimer.unref?.();
 
   const shutdown = (signal: string) => {
     console.log(`\n[${signal}] shutting down…`);
     watcher.stopAll();
     clearInterval(syncTimer);
+    clearInterval(updateTimer);
     server.close(() => process.exit(0));
     // Close keep-alive sockets so the process exits promptly.
     (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();

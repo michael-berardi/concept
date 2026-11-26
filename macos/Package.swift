@@ -8,6 +8,9 @@ let package = Package(
         .library(name: "ConceptKit", targets: ["ConceptKit"]),
         .executable(name: "Concept", targets: ["Concept"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0")
+    ],
     targets: [
         .target(
             name: "ConceptKit",
@@ -15,8 +18,14 @@ let package = Package(
         ),
         .executableTarget(
             name: "Concept",
-            dependencies: ["ConceptKit"],
-            path: "Sources/Concept"
+            dependencies: [
+                "ConceptKit",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            path: "Sources/Concept",
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
         ),
         .testTarget(
             name: "ConceptKitTests",

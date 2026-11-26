@@ -3,7 +3,7 @@ import type { Api, RowMove } from "./apiTypes";
 import type {
   AclEntry, ActivityEntry, Comment, Database, DbRow, GraphResult, Health, Invite,
   LinksResult, Member, PageRecord, SearchResult, SyncConfig, SyncStatus, TagsResult,
-  Team, Token, TreeNode, User, VaultFile, VaultFileRecord, Workspace,
+  Team, Token, TreeNode, UpdateStatus, User, VaultFile, VaultFileRecord, Workspace,
 } from "./types";
 
 const enc = encodeURIComponent;
@@ -75,6 +75,9 @@ export class RealApi implements Api {
 
   health() {
     return request<Health>("GET", "/api/health", {}, this.base);
+  }
+  updates() {
+    return request<UpdateStatus>("GET", "/api/updates", {}, this.base);
   }
   register(input: Parameters<Api["register"]>[0]) {
     return request<{ user: User }>("POST", "/api/auth/register", { json: input }, this.base);

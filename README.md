@@ -33,6 +33,13 @@ The app creates a CRM workspace. Data and the generated encryption secret persis
 in the `concept-data` volume. Back up the whole volume, not just the Markdown.
 For Node installation, TLS and configuration, see [self-hosting](docs/SELF-HOSTING.md).
 
+## Updates
+
+The Mac app checks for a new release once a day and shows the standard update
+prompt; automatic installation stays off until you turn it on in **Settings →
+Updates**. Self-hosted servers show instance admins a notice with the upgrade
+command and never update themselves. See [updates](docs/updates.md).
+
 ## Work with your files
 
 - Pages have properties, wiki links and backlinks. The web app adds a block
@@ -70,7 +77,14 @@ swift test -j 4
 
 The Mac package requires Swift 6 and macOS 14+. `macos/scripts/bundle.sh` packages
 a universal app; it ad-hoc signs by default. Developer ID signing and notarization
-require `CONCEPT_SIGNING_IDENTITY` and `CONCEPT_NOTARY_PROFILE`.
+require `CONCEPT_SIGNING_IDENTITY` and `CONCEPT_NOTARY_PROFILE`; a release also
+needs the Sparkle signing key ([publishing a Mac release](docs/updates.md#publishing-a-mac-release)).
+
+## Privacy
+
+No telemetry. Besides Git sync you configure, Concept's only request is one
+anonymous update check a day. Turn it off in **Settings → Updates** or with
+`CONCEPT_NO_UPDATE_CHECK=1`. Details: [PRIVACY.md](PRIVACY.md).
 
 ## License
 

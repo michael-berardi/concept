@@ -16,12 +16,14 @@ USAGE
   concept-server create-user <email> <name> <password> [--admin]
   concept-server reindex [workspace-slug]
   concept-server doctor                Check data dir, database, FTS5, git, workspaces
+  concept-server update --check        Check for a newer release (exit 0 current, 10 available, 1 failed)
 
 ENVIRONMENT
   CONCEPT_DATA_DIR    data directory (default ./data)
   PORT                HTTP port (default 8787)
   CONCEPT_SECRET      instance secret for token encryption (generated+persisted if unset)
   CONCEPT_OPEN_SIGNUP set to 1 to allow open registration without an invite
+  CONCEPT_NO_UPDATE_CHECK set to 1 to turn off the daily release check
 `;
 
 async function main(): Promise<number> {
@@ -159,6 +161,30 @@ async function main(): Promise<number> {
       }
       console.log(failures === 0 ? "doctor: all checks passed" : `doctor: ${failures} check(s) failed`);
       return failures === 0 ? 0 : 1;
+    }
+
+    case "update": {
+      // Report only: Docker and source installs are upgraded with the printed command.
+      const { UpdateChecker } = await import("./updates.js");
+      const disabled = cfg.noUpdateCheck; // a disabled checker also removes its cache file
+      const checker = new UpdateChecker({ dataDir: cfg.dataDir, currentVersion: cfg.version, apiUrl: cfg.updateApiUrl, disabled });
+      if (disabled) {
+        console.log("Update checks are off (CONCEPT_NO_UPDATE_CHECK=1 or CI).");
+        return 0;
+      }
+      const status = await checker.check({ force: true });
+      if (status.error) {
+        console.error(`error: ${status.error} (code=update_check_failed)`);
+        return 1;
+      }
+      if (!status.available) {
+        console.log(`Concept ${status.current} is up to date.`);
+        return 0;
+      }
+      console.log(`Concept ${status.version} is available — you have ${status.current}.`);
+      if (status.notes) console.log(`\n${status.notes}\n`);
+      console.log(`Update: ${status.command}`);
+      return 10;
     }
 
     case "help":

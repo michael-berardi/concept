@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { getCookie } from "hono/cookie";
 import type { DB } from "./db.js";
 import type { Config } from "./config.js";
+import type { UpdateChecker } from "./updates.js";
 import type { VaultEngine, TreeNode } from "./vault/engine.js";
 import type { Indexer } from "./index/indexer.js";
 import type { VaultWatcher } from "./index/watcher.js";
@@ -56,12 +57,13 @@ export interface AppDeps {
   watcher: VaultWatcher;
   bus: EventBus;
   sync: SyncManager;
+  updates: UpdateChecker;
 }
 
 type Env = { Variables: { user: UserRow; access: WorkspaceAccess } };
 
 export function createApp(deps: AppDeps): Hono<Env> {
-  const { db, cfg, engine, indexer, bus, sync } = deps;
+  const { db, cfg, engine, indexer, bus, sync, updates } = deps;
   const app = new Hono<Env>();
 
   // ---------- error handling ----------
@@ -214,6 +216,13 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.get("/api/health", (c) =>
     c.json({ ok: true, version: cfg.version, setupRequired: userCount() === 0 }),
   );
+
+  // Instance admins see the cached daily check; the request itself is anonymous and bounded.
+  app.get("/api/updates", async (c) => {
+    if (!c.get("user").is_admin) throw forbidden("Instance admin required");
+    await updates.check();
+    return c.json(updates.status());
+  });
 
   // =====================================================================
   // Auth

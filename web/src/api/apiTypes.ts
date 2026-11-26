@@ -1,7 +1,7 @@
 import type {
   AclEntry, ActivityEntry, Comment, Database, DbRow, GraphResult, Health, Invite,
   LinksResult, Member, PageRecord, Permission, Role, SearchResult, SyncConfig,
-  SyncStatus, TagsResult, Team, Token, TreeNode, User, VaultFile, VaultFileRecord, Workspace,
+  SyncStatus, TagsResult, Team, Token, TreeNode, UpdateStatus, User, VaultFile, VaultFileRecord, Workspace,
 } from "./types";
 
 export interface RowMove {
@@ -16,6 +16,7 @@ export interface RowMove {
 /** Transport-agnostic API surface (real HTTP and the dev mock implement this). */
 export interface Api {
   health(): Promise<Health>;
+  updates(): Promise<UpdateStatus>;
   register(input: { email: string; name: string; password: string; inviteToken?: string }): Promise<{ user: User }>;
   login(input: { email: string; password: string }): Promise<{ user: User }>;
   logout(): Promise<void>;

@@ -11,6 +11,7 @@ import { EventBus } from "../src/events.js";
 import { SyncManager } from "../src/sync/syncer.js";
 import { VaultEngine } from "../src/vault/engine.js";
 import { createApp } from "../src/app.js";
+import { UpdateChecker } from "../src/updates.js";
 
 export interface TestEnv {
   baseUrl: string;
@@ -23,7 +24,11 @@ export interface TestEnv {
   close: () => Promise<void>;
 }
 
-export async function makeApp(opts?: { watchDebounceMs?: number; openSignup?: boolean }): Promise<TestEnv> {
+export async function makeApp(opts?: {
+  watchDebounceMs?: number;
+  openSignup?: boolean;
+  updates?: UpdateChecker;
+}): Promise<TestEnv> {
   const dataDir = mkdtempSync(path.join(tmpdir(), "concept-test-"));
   const cfg: Config = {
     dataDir,
@@ -33,6 +38,8 @@ export async function makeApp(opts?: { watchDebounceMs?: number; openSignup?: bo
     openSignup: opts?.openSignup ?? false,
     publicDir: path.resolve(import.meta.dirname ?? ".", "../public"),
     version: "test",
+    noUpdateCheck: false,
+    updateApiUrl: "https://api.github.com",
     syncDebounceMs: 300,
     syncIntervalMs: 60_000,
     watchDebounceMs: opts?.watchDebounceMs ?? 250,
@@ -61,7 +68,8 @@ export async function makeApp(opts?: { watchDebounceMs?: number; openSignup?: bo
     cfg.watchDebounceMs,
     2000, // safety-net rescan, short so a dropped file event never fails a test
   );
-  const app = createApp({ cfg, db, engine, indexer, watcher, bus, sync });
+  const updates = opts?.updates ?? new UpdateChecker({ dataDir, currentVersion: "test", disabled: true });
+  const app = createApp({ cfg, db, engine, indexer, watcher, bus, sync, updates });
   const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
   await new Promise<void>((resolve) => server.on("listening", resolve));
   const addr = server.address();

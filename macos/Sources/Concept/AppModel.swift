@@ -277,6 +277,12 @@ final class AppModel {
         drafts[path] = text
     }
 
+    /// Before an update relaunches the app: save every draft; false while a draft failed to save or a sync runs.
+    func readyToRelaunch() -> Bool {
+        for path in Array(drafts.keys) { saveDraft(for: path) }
+        return drafts.isEmpty && syncState != .syncing
+    }
+
     @discardableResult
     func saveDraft(for path: String) -> Bool {
         guard let vault, let text = drafts[path] else { return false }

@@ -34,10 +34,21 @@ curl localhost:8787/api/health
 ```
 
 ```json
-{ "ok": true, "version": "0.1.5", "setupRequired": false }
+{ "ok": true, "version": "0.2.0", "setupRequired": false }
 ```
 
 `setupRequired` is `true` until the first user registers.
+
+### `GET /api/updates`
+
+Instance admins only. Returns the cached daily release check; the server asks
+GitHub at most once a day.
+
+```json
+{ "enabled": true, "checkedAt": "2026-11-26T12:00:00.000Z", "current": "0.2.0",
+  "available": true, "version": "0.3.0", "releaseUrl": "https://github.com/…/releases/tag/v0.3.0",
+  "notes": "• Board views", "command": "git pull && docker compose up -d --build", "error": null }
+```
 
 ---
 

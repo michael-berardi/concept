@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key> <string>Concept</string>
+    <key>CFBundleDisplayName</key> <string>Concept</string>
+    <key>CFBundleIdentifier</key> <string>dev.concept.Concept</string>
+    <key>CFBundleVersion</key> <string>0.2.0</string>
+    <key>CFBundleShortVersionString</key> <string>0.2.0</string>
+    <key>CFBundlePackageType</key> <string>APPL</string>
+    <key>CFBundleExecutable</key> <string>Concept</string>
+    <key>CFBundleIconFile</key> <string>Concept</string>
+    <key>LSMinimumSystemVersion</key> <string>14.0</string>
+    <key>NSHighResolutionCapable</key> <true/>
+    <key>NSHumanReadableCopyright</key> <string>MIT License</string>
+    <key>SUEnableAutomaticChecks</key> <true/>
+    <key>SUScheduledCheckInterval</key> <integer>86400</integer>
+    <key>SUFeedURL</key> <string>https://github.com/michael-berardi/concept/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key> <string>REPLACE_WITH_CONCEPT_SPARKLE_EDDSA_PUBLIC_KEY</string>
+    <key>SUAllowsAutomaticUpdates</key> <true/>
+    <key>SUAutomaticallyUpdate</key> <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key> <true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key> <string>Concept Vault</string>
+            <key>CFBundleTypeRole</key> <string>Editor</string>
+            <key>LSItemContentTypes</key> <array><string>public.folder</string></array>
+        </dict>
+    </array>
+</dict>
+</plist>

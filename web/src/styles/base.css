@@ -1151,6 +1151,18 @@ textarea.input {
   margin-bottom: 18px;
   font-size: 13px;
 }
+.update-banner {
+  flex: none;
+  margin: 10px 12px 0;
+  border-color: var(--border);
+}
+.update-notes {
+  font-size: 12.5px;
+  margin-top: 3px;
+  white-space: pre-line;
+  max-height: 4.5em;
+  overflow: auto;
+}
 .source {
   width: 100%;
   min-height: 60vh;

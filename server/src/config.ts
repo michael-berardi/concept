@@ -16,6 +16,8 @@ export interface Config {
   openSignup: boolean;
   publicDir: string;
   version: string;
+  noUpdateCheck: boolean;
+  updateApiUrl: string;
   syncDebounceMs: number;
   syncIntervalMs: number;
   watchDebounceMs: number;
@@ -51,7 +53,10 @@ export function loadConfig(): Config {
     publicDir: path.resolve(
       env("CONCEPT_PUBLIC_DIR", path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public")),
     ),
-    version: env("npm_package_version", "0.1.5"),
+    version: env("npm_package_version", "0.2.0"),
+    // The daily release check is off when opted out and in CI.
+    noUpdateCheck: env("CONCEPT_NO_UPDATE_CHECK", "0") === "1" || !["", "0", "false"].includes(env("CI", "").toLowerCase()),
+    updateApiUrl: env("CONCEPT_UPDATE_API", "https://api.github.com"),
     syncDebounceMs: Number(env("CONCEPT_SYNC_DEBOUNCE_MS", "10000")),
     syncIntervalMs: Number(env("CONCEPT_SYNC_INTERVAL_MS", "60000")),
     watchDebounceMs: Number(env("CONCEPT_WATCH_DEBOUNCE_MS", "300")),

@@ -8,6 +8,7 @@ import { useSession } from "@/state/session";
 import { useTabs } from "@/state/tabs";
 import { usePanel } from "@/state/panel";
 import { CommandPalette } from "./CommandPalette";
+import { AdminUpdateNotice } from "@/features/updates/AdminUpdateNotice";
 
 const enc = (p: string) => p.split("/").map(encodeURIComponent).join("/");
 export const pageHref = (ws: string, path: string) => `/w/${ws}/page/${enc(path)}`;
@@ -245,6 +246,8 @@ export function AppShell() {
             <span className="hide-mobile" style={{ fontSize: 12.5 }}>{me?.name.split(" ")[0]}</span>
           </button>
         </header>
+
+        <AdminUpdateNotice />
 
         {mode === "workspace" && tabs.length > 0 ? (
           <div className="tabbar" role="tablist" aria-label="Open pages">

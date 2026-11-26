@@ -232,3 +232,16 @@ export interface Health {
   version: string;
   setupRequired: boolean;
 }
+
+/** Cached daily GitHub release check shown only to instance admins. */
+export interface UpdateStatus {
+  enabled: boolean;
+  checkedAt: string | null;
+  current: string;
+  available: boolean;
+  version: string | null;
+  releaseUrl: string | null;
+  notes: string | null;
+  command: string;
+  error: string | null;
+}

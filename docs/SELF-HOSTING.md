@@ -67,6 +67,7 @@ The CLI is also available as `node server/dist/cli.js` as `node server/bin/conce
 | `CONCEPT_HOST`         | `0.0.0.0`                | Bind address                                         |
 | `CONCEPT_SECRET`       | generated + persisted    | Encrypts git tokens at rest (AES-256-GCM). Keep it stable; losing it invalidates stored tokens. |
 | `CONCEPT_OPEN_SIGNUP`  | `0`                      | `1` = register without an invite                     |
+| `CONCEPT_NO_UPDATE_CHECK` | `0`                   | `1` = turn off the daily anonymous release check     |
 | `CONCEPT_PUBLIC_DIR`   | `<package>/public`       | Static web app directory                             |
 | `CONCEPT_SYNC_DEBOUNCE_MS` | `10000`              | Delay before an edit is committed to git             |
 | `CONCEPT_SYNC_INTERVAL_MS` | `60000`              | Pull --rebase / push cadence                         |
@@ -130,6 +131,12 @@ the built-in recursive file watcher.
 ## Upgrading
 
 1. Back up `$CONCEPT_DATA_DIR` (or snapshot the volume).
-2. Pull the new code and rebuild (`docker compose up -d --build`, or `pnpm install --frozen-lockfile && pnpm build`), then restart. Migrations run automatically on
-   start (`CREATE TABLE IF NOT EXISTS`-style, additive only).
+2. From the cloned repository run `git pull && docker compose up -d --build`
+   (without Docker: `git pull && pnpm install --frozen-lockfile && pnpm build`,
+   then restart). Migrations run automatically on start (`CREATE TABLE IF NOT EXISTS`-style,
+   additive only).
 3. `concept-server doctor` should report all checks passed.
+
+Instance admins see a notice in the web app when a newer release exists;
+`concept-server update --check` reports the same. The server never updates
+itself. See [updates](updates.md).
