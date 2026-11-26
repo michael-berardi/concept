@@ -121,3 +121,29 @@ test("seed never prints a generated admin password", () => {
   assert.match(source, /admin-password\.txt/);
   assert.doesNotMatch(source, /generated password:/);
 });
+
+for (const [days, keptOld] of [[90, false], [0, true]] as const) {
+  test(`activity retention ${days === 0 ? "0 keeps all history" : `${days} days prunes older activity`}`, async () => {
+    const { makeApp, Client } = await import("./helpers.js");
+    const env = await makeApp({ activityRetentionDays: days });
+    try {
+      const admin = new Client(env.baseUrl);
+      await admin.register("retention@concept.test", "password-123");
+      const ws = await admin.post("/api/workspaces", { name: "Retention" });
+      assert.equal(ws.status, 201);
+      const wsId = (env.db.prepare(`SELECT id FROM workspaces WHERE slug = ?`).get(ws.json.slug) as any).id;
+      const old = Date.now() - 200 * 24 * 3600 * 1000;
+      env.db
+        .prepare(`INSERT INTO activity (workspace_id, path, action, created_at) VALUES (?, NULL, 'synthetic.old', ?)`)
+        .run(wsId, old);
+      const page = await admin.post(`/api/w/${ws.json.slug}/pages`, { title: "Trigger" });
+      assert.equal(page.status, 201);
+      const left = env.db
+        .prepare(`SELECT COUNT(*) AS n FROM activity WHERE workspace_id = ? AND action = 'synthetic.old'`)
+        .get(wsId) as any;
+      assert.equal(left.n, keptOld ? 1 : 0);
+    } finally {
+      await env.close();
+    }
+  });
+}

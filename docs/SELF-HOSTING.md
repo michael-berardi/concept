@@ -73,6 +73,7 @@ The CLI is also available as `node server/dist/cli.js` as `node server/bin/conce
 | `CONCEPT_SYNC_DEBOUNCE_MS` | `10000`              | Delay before an edit is committed to git             |
 | `CONCEPT_SYNC_INTERVAL_MS` | `60000`              | Pull --rebase / push cadence                         |
 | `CONCEPT_WATCH_DEBOUNCE_MS` | `300`               | File-watcher settle time before re-indexing          |
+| `CONCEPT_ACTIVITY_RETENTION_DAYS` | `90`          | Days of activity history kept; `0` keeps it all      |
 
 ## Data layout
 
@@ -107,7 +108,8 @@ until you enable it and configure a remote; nothing is fetched or pushed before 
 
 The vault gets a `.gitignore` with `.retex/`, `.trash/` and `.DS_Store`. New data
 directories and vault files are created with 0700/0600 permissions. Each new
-activity entry prunes activity older than 90 days; there is no automatic purge
+activity entry prunes activity older than `CONCEPT_ACTIVITY_RETENTION_DAYS`
+(default 90; `0` keeps it all); there is no automatic purge
 of vault backups or `.trash/`, so delete those yourself when you want them gone.
 
 ## Retex compatibility

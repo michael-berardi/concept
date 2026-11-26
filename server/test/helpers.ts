@@ -23,7 +23,11 @@ export interface TestEnv {
   close: () => Promise<void>;
 }
 
-export async function makeApp(opts?: { watchDebounceMs?: number; openSignup?: boolean }): Promise<TestEnv> {
+export async function makeApp(opts?: {
+  watchDebounceMs?: number;
+  openSignup?: boolean;
+  activityRetentionDays?: number;
+}): Promise<TestEnv> {
   const dataDir = mkdtempSync(path.join(tmpdir(), "concept-test-"));
   const cfg: Config = {
     dataDir,
@@ -36,6 +40,7 @@ export async function makeApp(opts?: { watchDebounceMs?: number; openSignup?: bo
     syncDebounceMs: 300,
     syncIntervalMs: 60_000,
     watchDebounceMs: opts?.watchDebounceMs ?? 250,
+    activityRetentionDays: opts?.activityRetentionDays ?? 90,
   };
   const db = openDb(path.join(dataDir, "concept.db"));
   const indexer = new SqliteIndexer(db);

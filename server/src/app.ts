@@ -183,8 +183,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
     return t.replace(/^W\//, "").replace(/^"|"$/g, "");
   };
 
-  // Activity is an audit trail, not an unlimited log of every edit.
-  const ACTIVITY_RETENTION_MS = 90 * 24 * 3600 * 1000;
+  // Activity history is bounded by CONCEPT_ACTIVITY_RETENTION_DAYS (default 90; 0 keeps it all).
+  const activityRetentionMs = (cfg.activityRetentionDays ?? 90) * 24 * 3600 * 1000;
   const logActivity = (
     wsId: string,
     path: string | null,
@@ -192,10 +192,12 @@ export function createApp(deps: AppDeps): Hono<Env> {
     action: string,
     detail?: string,
   ): void => {
-    db.prepare(`DELETE FROM activity WHERE workspace_id = ? AND created_at < ?`).run(
-      wsId,
-      now() - ACTIVITY_RETENTION_MS,
-    );
+    if (activityRetentionMs > 0) {
+      db.prepare(`DELETE FROM activity WHERE workspace_id = ? AND created_at < ?`).run(
+        wsId,
+        now() - activityRetentionMs,
+      );
+    }
     db.prepare(
       `INSERT INTO activity (workspace_id, path, user_id, user_name, action, detail, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
