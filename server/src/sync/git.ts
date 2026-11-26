@@ -1,7 +1,8 @@
 import { badRequest } from "../errors.js";
 import { execFile } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { privateMkdir, privateWrite } from "../vault/files.js";
 
 export interface GitResult {
   code: number;
@@ -133,8 +134,8 @@ export function conflictCopyPath(relPath: string, timestamp: number): string {
 export function preserveConflictCopy(vaultDir: string, relPath: string, content: string | Buffer): string {
   const dest = conflictCopyPath(relPath, Date.now());
   const abs = path.join(vaultDir, ...dest.split("/"));
-  mkdirSync(path.dirname(abs), { recursive: true });
-  writeFileSync(abs, content);
+  privateMkdir(path.dirname(abs));
+  privateWrite(abs, content);
   return dest;
 }
 

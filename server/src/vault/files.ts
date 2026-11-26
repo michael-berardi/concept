@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   realpathSync,
   mkdirSync,
@@ -142,12 +143,24 @@ export function sha256(data: Buffer | string): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+/** Create user-content directories readable only by the server user. */
+export function privateMkdir(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+}
+
+/** Write user content with owner-only permissions, including on overwrite. */
+export function privateWrite(file: string, data: Buffer | string): void {
+  privateMkdir(path.dirname(file));
+  writeFileSync(file, data, { mode: 0o600 });
+  chmodSync(file, 0o600);
+}
+
 /** Atomic write: temp file in the same directory, then rename. */
 export function atomicWrite(vaultDir: string, relPath: string, data: Buffer | string): void {
   const abs = absPath(vaultDir, relPath);
-  mkdirSync(path.dirname(abs), { recursive: true });
+  privateMkdir(path.dirname(abs));
   const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${randomBytes(4).toString("hex")}.tmp`);
-  writeFileSync(tmp, data);
+  privateWrite(tmp, data);
   renameSync(tmp, abs);
 }
 
@@ -156,7 +169,7 @@ export function moveToTrash(vaultDir: string, relPath: string): string {
   const abs = absPath(vaultDir, relPath);
   if (!existsSync(abs)) throw notFound(`No such file: ${relPath}`);
   const trashDir = path.join(vaultDir, ".trash");
-  mkdirSync(trashDir, { recursive: true });
+  privateMkdir(trashDir);
   const base = path.basename(relPath);
   const name = `${Date.now()}-${base}`;
   let dest = path.join(trashDir, name);

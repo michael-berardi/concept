@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdirSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { privateMkdir, privateWrite } from "../vault/files.js";
 import type { DB } from "../db.js";
 import type { Config } from "../config.js";
 import {
@@ -220,7 +221,7 @@ export class SyncManager {
       return;
     }
     const vaultDir = this.resolveVaultDir(slug);
-    mkdirSync(vaultDir, { recursive: true });
+    privateMkdir(vaultDir);
     this.setState(wsId, { lastStatus: "syncing", lastMessage: null, lastSyncAt: Date.now() });
     try {
       const result = await this.syncRepo(wsId, vaultDir, settings, actor);
@@ -306,8 +307,7 @@ export class SyncManager {
                 // resolve by taking the remote (incoming) version in place
                 const theirs = await gitBuffer(vaultDir, ["show", `FETCH_HEAD:${f}`]);
                 if (theirs) {
-                  const fs = await import("node:fs");
-                  fs.writeFileSync(path.join(vaultDir, ...f.split("/")), theirs);
+                  privateWrite(path.join(vaultDir, ...f.split("/")), theirs);
                 }
                 await git(vaultDir, ["add", "-A", "--", f]);
               }

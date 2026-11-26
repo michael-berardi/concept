@@ -55,6 +55,22 @@ Pages live in `Pages/`, database rows in `Data/<database>/`, attachments in
 frontmatter. Accounts, permissions and comments live in the server's SQLite
 database, not in the vault. See the [format](docs/SPEC.md) and [REST API](docs/API.md).
 
+## Privacy
+
+Concept sends nothing over the network by default. The macOS app reads and writes the Markdown folder you open. The web app talks only to the self-hosted server that serves it. There is no telemetry, analytics, crash reporting, update check, install ID or third-party font/script loaded into the UI.
+
+Network features happen only when you set them up:
+
+- Git sync fetches from and pushes to the remote URL you configure. Your token is sent only to that host. The server checks an enabled remote every 60 seconds; turn sync off in workspace settings to stop it.
+- Self-hosted clients send the pages, edits and attachments you make to your own server. ConceptKit also includes a REST client for a server you configure.
+- Downloading the macOS release from GitHub is a click you make; the app itself never checks for updates.
+
+Locally, the Mac app keeps your pages in the vault folder, recent vault paths and pinned paths in macOS `UserDefaults`, and an optional sync token in the macOS Keychain (`dev.concept.vault-sync`). Files and folders Concept creates use 0600/0700 permissions. The server keeps accounts, session hashes, comments, activity, sync settings and the search index in `$CONCEPT_DATA_DIR/concept.db`, vaults in `$CONCEPT_DATA_DIR/workspaces/`, and an encryption secret in `$CONCEPT_DATA_DIR/.instance-secret`. A generated admin password is written to `$CONCEPT_DATA_DIR/admin-password.txt` (0600), never printed. Each new activity entry prunes entries older than 90 days; pages you delete stay in the vault's `.trash/` until you remove them. Git tokens are encrypted at rest. The browser stores theme and panel state in `localStorage`.
+
+To delete everything: stop the server and remove the data directory (or the `concept-data` Docker volume). In the Mac app, delete the vault folder, clear the app's `recentVaults` and `pinnedPaths-…` keys in macOS `UserDefaults`, and delete the `dev.concept.vault-sync` Keychain item if you saved a token. Clear site data for your server in the browser.
+
+The only third parties that receive data are the ones you configure: your Git host receives the vault contents you sync, and your self-hosted server receives the content you send to it.
+
 ## Develop
 
 Use Node 22.13+ and pnpm 10.27.0. Build before testing: the server's static-serving

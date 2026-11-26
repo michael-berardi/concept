@@ -37,8 +37,10 @@ CONCEPT_DATA_DIR=./data node dist/cli.js seed
 CONCEPT_DATA_DIR=./data PORT=8787 node dist/index.js
 ```
 
-The seed command prints the generated admin password. Save it before continuing.
-You can set `CONCEPT_ADMIN_EMAIL` and `CONCEPT_ADMIN_PASSWORD` when seeding instead.
+Without `CONCEPT_ADMIN_PASSWORD`, the seed command writes the generated password
+to `$CONCEPT_DATA_DIR/admin-password.txt` (0600) instead of printing it. Read it
+there, then delete the file if you no longer need it. You can set
+`CONCEPT_ADMIN_EMAIL` and `CONCEPT_ADMIN_PASSWORD` when seeding instead.
 Keep the same data directory for both commands; use an absolute path in a service.
 
 For development: `pnpm --filter @concept/server dev` (tsx watch, reloads on
@@ -77,7 +79,8 @@ The CLI is also available as `node server/dist/cli.js` as `node server/bin/conce
 ```
 $CONCEPT_DATA_DIR/
   concept.db                 SQLite: users, sessions, ACLs, comments, index, FTS5
-  .instance-secret           generated secret (only if CONCEPT_SECRET unset)
+  .instance-secret           generated secret (only if CONCEPT_SECRET unset), 0600
+  admin-password.txt         generated seed password (only when seed generated one), 0600
   workspaces/<slug>/         one vault per workspace (plain Markdown + .concept/)
     .concept/workspace.json  {"name": "…", "id": "…"}
     .concept/databases/<slug>.json
@@ -91,7 +94,8 @@ any time. Files deleted through the API go to `.trash/` first.
 
 ## Git sync
 
-Per workspace under **Settings → Sync** (or `PUT /api/w/:ws/sync`):
+Per workspace under **Settings → Sync** (or `PUT /api/w/:ws/sync`). Sync is off
+until you enable it and configure a remote; nothing is fetched or pushed before then.
 
 - commits are debounced (10 s) and attributed to the acting user;
 - `fetch` + `rebase` + `push` run every 60 s and on demand;
@@ -101,7 +105,10 @@ Per workspace under **Settings → Sync** (or `PUT /api/w/:ws/sync`):
   `<name>.conflict-<timestamp>.md`, the remote version is checked out, and the
   conflict copies are listed by `GET /api/w/:ws/sync/status`.
 
-The vault gets a `.gitignore` with `.retex/`, `.trash/` and `.DS_Store`.
+The vault gets a `.gitignore` with `.retex/`, `.trash/` and `.DS_Store`. New data
+directories and vault files are created with 0700/0600 permissions. Each new
+activity entry prunes activity older than 90 days; there is no automatic purge
+of vault backups or `.trash/`, so delete those yourself when you want them gone.
 
 ## Retex compatibility
 

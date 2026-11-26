@@ -9,7 +9,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="0.1.5"
+# Build tooling must not report usage; the app itself has no analytics.
+export DO_NOT_TRACK=1 NEXT_TELEMETRY_DISABLED=1 ASTRO_TELEMETRY_DISABLED=1
+export HF_HUB_DISABLE_TELEMETRY=1 NO_UPDATE_NOTIFIER=1
+
+VERSION="0.1.6"
 # Prefer a version from git tags when available (read-only).
 if command -v git >/dev/null 2>&1; then
   GIT_VERSION="$(git describe --tags --abbrev=0 2>/dev/null || true)"

@@ -40,13 +40,16 @@ import {
   canonicalCase,
   assertContentPath,
   listAllFiles,
+  privateMkdir,
+  privateWrite,
   readFileIfExists,
   safeRelPath,
 } from "./vault/files.js";
+import { redactSecrets } from "./sync/git.js";
 import { slugifyDbSlug } from "./vault/engine.js";
 import { serveStaticOrIndex } from "./static.js";
 import path from "node:path";
-import { mkdirSync, writeFileSync, existsSync, renameSync } from "node:fs";
+import { existsSync, renameSync } from "node:fs";
 
 export interface AppDeps {
   cfg: Config;
@@ -72,10 +75,11 @@ export function createApp(deps: AppDeps): Hono<Env> {
         error: { code: err.code, message: err.message, ...(err.extra ?? {}) },
       });
     }
-    console.error("[api] internal error:", err);
+    // Log the message only: stack traces can echo request data or credentials.
+    console.error(`[api] internal error: ${redactSecrets((err as Error).message ?? String(err))}`);
     c.status(500);
     return c.json({
-      error: { code: "internal", message: `Internal error: ${(err as Error).message}` },
+      error: { code: "internal", message: `Internal error: ${redactSecrets((err as Error).message ?? "")}` },
     });
   });
   app.notFound((c) => {
@@ -179,6 +183,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
     return t.replace(/^W\//, "").replace(/^"|"$/g, "");
   };
 
+  // Activity is an audit trail, not an unlimited log of every edit.
+  const ACTIVITY_RETENTION_MS = 90 * 24 * 3600 * 1000;
   const logActivity = (
     wsId: string,
     path: string | null,
@@ -186,6 +192,10 @@ export function createApp(deps: AppDeps): Hono<Env> {
     action: string,
     detail?: string,
   ): void => {
+    db.prepare(`DELETE FROM activity WHERE workspace_id = ? AND created_at < ?`).run(
+      wsId,
+      now() - ACTIVITY_RETENTION_MS,
+    );
     db.prepare(
       `INSERT INTO activity (workspace_id, path, user_id, user_name, action, detail, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -200,7 +210,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       try {
         indexer.indexFile(ws.id, engine.vaultDir(wsSlug), p);
       } catch (err) {
-        console.error(`[index] failed for ${p}: ${(err as Error).message}`);
+        console.error(`[index] failed for ${p}: ${redactSecrets((err as Error).message)}`);
       }
     }
     indexer.resolveAllLinks?.(ws.id);
@@ -453,13 +463,13 @@ export function createApp(deps: AppDeps): Hono<Env> {
     deps.watcher.unwatchWorkspace(access.slug);
     // Move the vault aside instead of destroying data.
     const trashDir = path.join(cfg.dataDir, "deleted-workspaces");
-    mkdirSync(trashDir, { recursive: true });
+    privateMkdir(trashDir);
     if (existsSync(vaultDir)) {
       const dest = path.join(trashDir, `${access.slug}-${Date.now()}`);
       try {
         renameSync(vaultDir, dest);
       } catch (err) {
-        console.error(`[workspace] could not move vault aside: ${(err as Error).message}`);
+        console.error(`[workspace] could not move vault aside: ${redactSecrets((err as Error).message)}`);
       }
     }
     return c.json({ ok: true });
@@ -1138,7 +1148,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const id = `${shortId("att", 5).slice(4)}-${safeName}`;
     const relPath = `${ATTACHMENTS_DIR}/${id}`;
     const buf = Buffer.from(await file.arrayBuffer());
-    writeFileSync(absPath(engine.vaultDir(access.slug), relPath), buf);
+    privateWrite(absPath(engine.vaultDir(access.slug), relPath), buf);
     engine.afterWrite(access.slug, [relPath], actorLabel(c));
     logActivity(access.workspaceId, relPath, c.get("user"), "attachment.uploaded", `${buf.length} bytes`);
     return c.json({ id, path: relPath, size: buf.length }, 201);
@@ -1407,8 +1417,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         continue;
       }
       const abs = absPath(vaultDir, clean);
-      mkdirSync(path.dirname(abs), { recursive: true });
-      writeFileSync(abs, e.data);
+      privateWrite(abs, e.data);
       written.push(clean);
     }
     const re = indexer.reindexWorkspace(access.workspaceId, vaultDir);

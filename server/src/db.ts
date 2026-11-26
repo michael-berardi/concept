@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { chmodSync, existsSync } from "node:fs";
 
 export type DB = DatabaseSync;
 
@@ -8,6 +9,11 @@ export function openDb(file: string): DB {
   db.exec("PRAGMA foreign_keys = ON");
   db.exec("PRAGMA busy_timeout = 5000");
   migrate(db);
+  // SQLite creates new files with the process umask; user data stays owner-only.
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const p = file + suffix;
+    if (existsSync(p)) chmodSync(p, 0o600);
+  }
   return db;
 }
 

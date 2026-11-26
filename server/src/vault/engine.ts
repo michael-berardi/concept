@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, statSync, readdirSync, rmdirSync } from "node:fs";
+import { readFileSync, existsSync, renameSync, statSync, readdirSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import {
@@ -12,6 +12,8 @@ import {
   isReservedTopLevel,
   listAllFiles,
   moveToTrash,
+  privateMkdir,
+  privateWrite,
   readFileIfExists,
   safeRelPath,
   sha256,
@@ -95,14 +97,14 @@ export class VaultEngine {
 
   ensureVaultDirs(slug: string, name: string, id: string): string {
     const dir = this.getVaultDir(slug);
-    mkdirSync(path.join(dir, CONCEPT_DIR, "databases"), { recursive: true });
-    mkdirSync(path.join(dir, PAGES_DIR), { recursive: true });
-    mkdirSync(path.join(dir, DATA_DIR), { recursive: true });
-    mkdirSync(path.join(dir, ATTACHMENTS_DIR), { recursive: true });
+    privateMkdir(path.join(dir, CONCEPT_DIR, "databases"));
+    privateMkdir(path.join(dir, PAGES_DIR));
+    privateMkdir(path.join(dir, DATA_DIR));
+    privateMkdir(path.join(dir, ATTACHMENTS_DIR));
     writeJson(path.join(dir, CONCEPT_DIR, "workspace.json"), { name, id });
     const gitignore = path.join(dir, ".gitignore");
     if (!existsSync(gitignore)) {
-      writeFileSync(gitignore, ".retex/\n.trash/\n.DS_Store\n");
+      privateWrite(gitignore, ".retex/\n.trash/\n.DS_Store\n");
     }
     return dir;
   }
@@ -257,7 +259,7 @@ export class VaultEngine {
     const dest = destDir ? `${PAGES_DIR}/${destDir}/${path.basename(p)}` : `${PAGES_DIR}/${path.basename(p)}`;
     if (dest !== p) {
       const finalDest = uniquePath(vaultDir, dest);
-      mkdirSync(path.dirname(absPath(vaultDir, finalDest)), { recursive: true });
+      privateMkdir(path.dirname(absPath(vaultDir, finalDest)));
       renameSync(absPath(vaultDir, p), absPath(vaultDir, finalDest));
       // nested pages live in a directory named after the page: move it too
       const oldDir = p.replace(/\.md$/, "");
@@ -381,7 +383,7 @@ export class VaultEngine {
     }
     const vaultDir = this.vaultDir(ws.slug);
     writeJson(absPath(vaultDir, this.dbSchemaPath(s.slug)), s);
-    mkdirSync(absPath(vaultDir, `${DATA_DIR}/${s.slug}`), { recursive: true });
+    privateMkdir(absPath(vaultDir, `${DATA_DIR}/${s.slug}`));
     this.afterWrite(ws.slug, [this.dbSchemaPath(s.slug)], actor);
     return s;
   }
@@ -882,7 +884,7 @@ export class VaultEngine {
     }
     if (!exists(vaultDir, src)) throw notFound(`No such file: ${src}`);
     if (exists(vaultDir, dst)) throw conflict(`Destination already exists: ${dst}`);
-    mkdirSync(path.dirname(absPath(vaultDir, dst)), { recursive: true });
+    privateMkdir(path.dirname(absPath(vaultDir, dst)));
     renameSync(absPath(vaultDir, src), absPath(vaultDir, dst));
     this.afterWrite(ws.slug, [src, dst], actor);
     return { from: src, to: dst };
@@ -1155,8 +1157,7 @@ function rmDirSafe(dir: string): void {
 }
 
 function writeJson(file: string, data: unknown): void {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+  privateWrite(file, JSON.stringify(data, null, 2) + "\n");
 }
 
 export function slugifyDbSlug(input: string): string {

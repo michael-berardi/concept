@@ -63,8 +63,6 @@ export function startServer(): void {
 
   const server = serve({ fetch: app.fetch, port: cfg.port, hostname: cfg.host }, (info) => {
     console.log(`Concept server v${cfg.version}`);
-    console.log(`  data dir : ${cfg.dataDir}`);
-    console.log(`  public   : ${cfg.publicDir}`);
     console.log(`  listening: http://localhost:${info.port}`);
   });
 
