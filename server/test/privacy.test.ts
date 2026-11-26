@@ -147,3 +147,29 @@ for (const [days, keptOld] of [[90, false], [0, true]] as const) {
     }
   });
 }
+
+test("README privacy stays short and PRIVACY.md carries the detail", () => {
+  const readme = readFileSync(path.join(root, "README.md"), "utf8");
+  const section = readme.split(/^## Privacy\s*$/m)[1]?.split(/^## /m)[0] ?? "";
+  const lines = section.split("\n").filter((line) => line.trim() !== "");
+  assert.ok(lines.length > 0 && lines.length <= 6, `README Privacy has ${lines.length} lines`);
+  assert.match(section, /No telemetry/);
+  assert.match(section, /CONCEPT_NO_UPDATE_CHECK=1/);
+  assert.match(section, /PRIVACY\.md/);
+
+  const privacy = readFileSync(path.join(root, "PRIVACY.md"), "utf8");
+  for (const detail of [
+    "concept-update-check",
+    "update-check.json",
+    "CONCEPT_NO_UPDATE_CHECK=1",
+    "admin-password.txt",
+    ".instance-secret",
+    "CONCEPT_ACTIVITY_RETENTION_DAYS",
+    "dev.concept.vault-sync",
+    "localStorage",
+    "deleted-workspaces",
+    "0700/0600",
+  ]) {
+    assert.ok(privacy.includes(detail), `PRIVACY.md mentions ${detail}`);
+  }
+});
