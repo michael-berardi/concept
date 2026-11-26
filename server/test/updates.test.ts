@@ -151,6 +151,7 @@ test("check: equal, older, draft and prerelease releases give no notice", async 
 
 test("check: failure is cached with its cause, keeps the last release, never loops", async () => {
   const dir = tempDir();
+  const httpDir = tempDir();
   const clock = { now: T0 };
   let fail = false;
   try {
@@ -169,11 +170,12 @@ test("check: failure is cached with its cause, keeps the last release, never loo
     assert.equal(calls.length, 2, "no retry within the day");
     assert.match(readFileSync(path.join(dir, UPDATE_CACHE_FILE), "utf8"), /network down/);
 
-    const http = await checker(tempDir(), () => json({ message: "rate limited" }, 403)).instance.check();
+    const http = await checker(httpDir, () => json({ message: "rate limited" }, 403)).instance.check();
     assert.equal(http.error, "update check failed: GitHub returned HTTP 403");
     assert.deepEqual(readdirSync(dir), [UPDATE_CACHE_FILE]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+    rmSync(httpDir, { recursive: true, force: true });
   }
 });
 
