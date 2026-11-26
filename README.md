@@ -83,8 +83,10 @@ needs the Sparkle signing key ([publishing a Mac release](docs/updates.md#publis
 ## Privacy
 
 No telemetry. Besides Git sync you configure, Concept's only request is one
-anonymous update check a day. Turn it off in **Settings → Updates** or with
-`CONCEPT_NO_UPDATE_CHECK=1`. Details: [PRIVACY.md](PRIVACY.md).
+anonymous update check a day; turn it off in **Settings → Updates** or with
+`CONCEPT_NO_UPDATE_CHECK=1`. Your pages stay in your vault folder or on your
+server, in owner-only files. To remove everything, delete the vault and the
+server's data directory. Details: [PRIVACY.md](PRIVACY.md).
 
 ## License
 

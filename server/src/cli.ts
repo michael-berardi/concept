@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { openDb } from "./db.js";
 import { loadConfig, workspaceRoot } from "./config.js";
 import { SqliteIndexer } from "./index/indexer.js";
@@ -45,6 +45,8 @@ async function main(): Promise<number> {
       const email = process.env.CONCEPT_ADMIN_EMAIL ?? "admin@concept.local";
       const generated = !process.env.CONCEPT_ADMIN_PASSWORD;
       const password = process.env.CONCEPT_ADMIN_PASSWORD ?? randomBytes(12).toString("base64url");
+      // A generated password goes to a 0600 file, never to terminal logs.
+      const passwordFile = generated ? path.join(cfg.dataDir, "admin-password.txt") : null;
       let user = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email) as any;
       if (!user) {
         const id = shortId("usr");
@@ -52,9 +54,13 @@ async function main(): Promise<number> {
           `INSERT INTO users (id, email, name, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?, 1, ?)`,
         ).run(id, email, "Admin", hashPassword(password), now());
         user = { id, email, name: "Admin" };
-        console.log(`Created admin user ${email}${generated ? ` with the generated password: ${password}` : " (password from CONCEPT_ADMIN_PASSWORD)"}`);
+        if (passwordFile) {
+          writeFileSync(passwordFile, password + "\n", { mode: 0o600 });
+          chmodSync(passwordFile, 0o600);
+        }
+        console.log(`Created admin user${passwordFile ? ` (generated password saved to ${passwordFile}, mode 0600)` : " (password from CONCEPT_ADMIN_PASSWORD)"}`);
       } else {
-        console.log(`Admin user ${email} already exists`);
+        console.log("Admin user already exists");
       }
       let ws = db.prepare(`SELECT * FROM workspaces WHERE slug = ?`).get("crm") as any;
       if (!ws) {
@@ -83,7 +89,6 @@ async function main(): Promise<number> {
       } else {
         console.log(`Workspace 'crm' already exists`);
       }
-      console.log(`Data dir: ${cfg.dataDir}`);
       return 0;
     }
 
@@ -95,14 +100,14 @@ async function main(): Promise<number> {
         return 2;
       }
       if (db.prepare(`SELECT id FROM users WHERE email = ?`).get(email)) {
-        console.error(`error: user ${email} already exists (code=email_taken)`);
+        console.error("error: email already registered (code=email_taken)");
         return 1;
       }
       const id = shortId("usr");
       db.prepare(
         `INSERT INTO users (id, email, name, password_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
       ).run(id, email, name || email.split("@")[0], hashPassword(password), flag === "--admin" ? 1 : 0, now());
-      console.log(`Created user ${email} (id ${id}${flag === "--admin" ? ", admin" : ""})`);
+      console.log(`Created user (id ${id}${flag === "--admin" ? ", admin" : ""})`);
       return 0;
     }
 

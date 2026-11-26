@@ -111,11 +111,21 @@ public final class Vault {
         let dir = absoluteURL(relative)
         if !fileManager.fileExists(atPath: dir.path) {
             do {
-                try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+                try fileManager.createDirectory(
+                    at: dir, withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o700])
             } catch {
                 throw ConceptError.writeFailed(relative, cause: String(describing: error))
             }
         }
+        try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+    }
+
+    /// Write a file Concept owns with owner-only permissions.
+    func writePrivate(_ data: Data, to relativePath: String) throws {
+        let url = try confinedURL(relativePath)
+        try data.write(to: url, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     // MARK: - Workspace metadata
@@ -133,7 +143,7 @@ public final class Vault {
 
     func writeWorkspaceInfo(_ info: WorkspaceInfo) throws {
         let data = try JSONEncoder().encode(info)
-        try data.write(to: absoluteURL(Self.workspaceFile), options: .atomic)
+        try writePrivate(data, to: Self.workspaceFile)
     }
 
     // MARK: - Creation
@@ -156,7 +166,8 @@ public final class Vault {
     public static func create(at url: URL, name: String, template: Template = .crm) throws -> Vault {
         let fm = FileManager.default
         do {
-            try fm.createDirectory(at: url, withIntermediateDirectories: true)
+            try fm.createDirectory(at: url, withIntermediateDirectories: true,
+                                   attributes: [.posixPermissions: 0o700])
         } catch {
             throw ConceptError.writeFailed(url.path, cause: String(describing: error))
         }
@@ -173,9 +184,8 @@ public final class Vault {
         }
         // Retex state is vault-local and must stay out of git.
         if !fm.fileExists(atPath: vault.absoluteURL(Self.gitignoreFile).path) {
-            try ".retex/\n.trash/\n.DS_Store\n"
-                .data(using: .utf8)!
-                .write(to: vault.absoluteURL(Self.gitignoreFile), options: .atomic)
+            try vault.writePrivate(".retex/\n.trash/\n.DS_Store\n".data(using: .utf8)!,
+                                   to: Self.gitignoreFile)
         }
         return vault
     }
@@ -256,7 +266,7 @@ public final class Vault {
             try ensureDirectory(dir)
         }
         do {
-            try document.render().write(to: fileURL, atomically: true, encoding: .utf8)
+            try writePrivate(Data(document.render().utf8), to: relativePath)
         } catch {
             throw ConceptError.writeFailed(relativePath, cause: String(describing: error))
         }
@@ -399,7 +409,7 @@ public final class Vault {
     public func writeDatabase(_ database: Database) throws {
         try ensureDirectory(Self.databasesDirectory)
         let data = try DatabaseJSON.encode(database)
-        try data.write(to: absoluteURL("\(Self.databasesDirectory)/\(database.slug).json"), options: .atomic)
+        try writePrivate(data, to: "\(Self.databasesDirectory)/\(database.slug).json")
     }
 
     // MARK: - Records
@@ -594,7 +604,7 @@ public final class Vault {
             return
         }
         let data = try JSONEncoder().encode(settings)
-        try data.write(to: absoluteURL(Self.syncFile), options: .atomic)
+        try writePrivate(data, to: Self.syncFile)
         try keepOutOfGit(Self.syncFile)
     }
 
@@ -605,6 +615,6 @@ public final class Vault {
         let current = (try? String(contentsOf: ignore, encoding: .utf8)) ?? ""
         guard !current.split(separator: "\n").contains(Substring(relativePath)) else { return }
         let updated = current + (current.isEmpty || current.hasSuffix("\n") ? "" : "\n") + relativePath + "\n"
-        try updated.write(to: ignore, atomically: true, encoding: .utf8)
+        try writePrivate(Data(updated.utf8), to: Self.gitignoreFile)
     }
 }

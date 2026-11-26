@@ -12,6 +12,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Build tooling must not report usage; the app itself has no analytics.
+export DO_NOT_TRACK=1 NEXT_TELEMETRY_DISABLED=1 ASTRO_TELEMETRY_DISABLED=1
+export HF_HUB_DISABLE_TELEMETRY=1 NO_UPDATE_NOTIFIER=1
+
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
 
 SIGN_ID="${CONCEPT_SIGNING_IDENTITY:--}"

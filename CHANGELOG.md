@@ -17,13 +17,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   instance admins a notice with the upgrade command, **Later** and **Skip this
   version**. `concept-server update --check` reports the same (exit 0, 10 or 1).
   `CONCEPT_NO_UPDATE_CHECK=1` turns the check off. See `docs/updates.md`.
-- `PRIVACY.md`.
+- `PRIVACY.md`: what goes over the network, what is stored locally and how to
+  remove it. The README keeps a short summary.
+- Regression tests that reject telemetry/analytics SDKs, tracking endpoints and
+  third-party fonts in shipped code, and check owner-only file permissions.
 
 ### Changed
 
 - `macos/scripts/bundle.sh` takes the version from `Resources/Info.plist`,
   embeds and signs Sparkle, refuses a release while `SUPublicEDKey` is the
   placeholder, and writes `dist/appcast.xml`.
+- Docker builds, macOS bundles and the server set telemetry-off environment
+  variables for any transitive tooling.
+
+### Fixed
+
+- New data directories, SQLite files, vault files and generated admin-password
+  files are created with 0700/0600 permissions.
+- The `seed` command no longer prints a generated admin password; it writes it
+  to a 0600 file in the data directory.
+- Activity history is pruned after 90 days; internal error logs and responses
+  redact credential-like URL strings, and CLI/startup logs no longer print
+  emails or data-directory paths.
 
 ## [0.1.5] - 2026-11-25
 

@@ -70,8 +70,6 @@ export function startServer(): void {
 
   const server = serve({ fetch: app.fetch, port: cfg.port, hostname: cfg.host }, (info) => {
     console.log(`Concept server v${cfg.version}`);
-    console.log(`  data dir : ${cfg.dataDir}`);
-    console.log(`  public   : ${cfg.publicDir}`);
     console.log(`  listening: http://localhost:${info.port}`);
     // Background only: a failed check is cached with its cause, never printed as noise.
     void updates.check();

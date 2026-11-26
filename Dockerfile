@@ -3,8 +3,13 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 RUN corepack enable
-# pnpm must never wait for a TTY inside a build
-ENV CI=true
+# pnpm must never wait for a TTY inside a build; no build tool may phone home
+ENV CI=true \
+    DO_NOT_TRACK=1 \
+    NEXT_TELEMETRY_DISABLED=1 \
+    ASTRO_TELEMETRY_DISABLED=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    NO_UPDATE_NOTIFIER=1
 COPY pnpm-workspace.yaml package.json ./
 
 # ---------- web (React 19 + Vite) ----------
@@ -30,6 +35,7 @@ FROM node:22-alpine AS runtime
 RUN apk add --no-cache git tini curl
 WORKDIR /app
 ENV NODE_ENV=production \
+    DO_NOT_TRACK=1 \
     CONCEPT_DATA_DIR=/data \
     PORT=8787
 COPY --from=server /app/server/package.json ./server/package.json
