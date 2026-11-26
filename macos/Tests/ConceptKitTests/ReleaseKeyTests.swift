@@ -62,11 +62,8 @@ struct ReleaseKeyTests {
         #expect(try run("check-release-key.sh", [try plist(key: "not-a-key", in: dir).path]).status != 0)
         let real = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation.base64EncodedString()
         #expect(try run("check-release-key.sh", [try plist(key: real, in: dir).path]).status == 0)
-        // The committed plist keeps the placeholder until the release key is set, so it is refused.
-        if (try? String(contentsOf: root.appendingPathComponent("Resources/Info.plist"), encoding: .utf8))?
-            .contains(UpdatePolicy.placeholderKey) == true {
-            #expect(try run("check-release-key.sh", []).status != 0)
-        }
+        // The committed plist carries the real release key, so a release build is allowed.
+        #expect(try run("check-release-key.sh", []).status == 0)
     }
 
     @Test("Appcast enclosure verifies against the app's key; a tampered ZIP does not")

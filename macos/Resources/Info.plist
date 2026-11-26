@@ -16,7 +16,7 @@
     <key>SUEnableAutomaticChecks</key> <true/>
     <key>SUScheduledCheckInterval</key> <integer>86400</integer>
     <key>SUFeedURL</key> <string>https://github.com/michael-berardi/concept/releases/latest/download/appcast.xml</string>
-    <key>SUPublicEDKey</key> <string>REPLACE_WITH_CONCEPT_SPARKLE_EDDSA_PUBLIC_KEY</string>
+    <key>SUPublicEDKey</key> <string>XbM29/CZ55WQqZZvnbCBYu/MmTJiB3j8bSRtohGkGRA=</string>
     <key>SUAllowsAutomaticUpdates</key> <true/>
     <key>SUAutomaticallyUpdate</key> <false/>
     <key>SUVerifyUpdateBeforeExtraction</key> <true/>
