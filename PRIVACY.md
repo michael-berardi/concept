@@ -75,7 +75,8 @@ the content you send to it. GitHub receives the anonymous update check above.
 
 ## How long it is kept
 
-- Activity older than 90 days is pruned as new activity is logged.
+- Activity older than `CONCEPT_ACTIVITY_RETENTION_DAYS` (default 90; `0` keeps
+  it all) is pruned as new activity is logged.
 - Pages you delete stay in the vault's `.trash/`, and deleted workspaces stay in
   `$CONCEPT_DATA_DIR/deleted-workspaces/`, until you remove them. Concept does
   not purge them automatically because they may hold content you still need.

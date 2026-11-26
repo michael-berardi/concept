@@ -22,6 +22,8 @@ export interface Config {
   syncDebounceMs: number;
   syncIntervalMs: number;
   watchDebounceMs: number;
+  /** Days of activity history to keep; 0 keeps it all. */
+  activityRetentionDays: number;
 }
 
 let cached: Config | null = null;
@@ -75,8 +77,17 @@ export function loadConfig(): Config {
     syncDebounceMs: Number(env("CONCEPT_SYNC_DEBOUNCE_MS", "10000")),
     syncIntervalMs: Number(env("CONCEPT_SYNC_INTERVAL_MS", "60000")),
     watchDebounceMs: Number(env("CONCEPT_WATCH_DEBOUNCE_MS", "300")),
+    activityRetentionDays: activityRetention(env("CONCEPT_ACTIVITY_RETENTION_DAYS", "90")),
   };
   return cached;
+}
+
+function activityRetention(raw: string): number {
+  const days = Number(raw);
+  if (!Number.isInteger(days) || days < 0) {
+    throw new Error(`CONCEPT_ACTIVITY_RETENTION_DAYS must be a whole number of days (0 keeps all), got ${JSON.stringify(raw)}`);
+  }
+  return days;
 }
 
 /** Test hook: reset cached config (config is read once per process). */

@@ -36,9 +36,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   files are created with 0700/0600 permissions.
 - The `seed` command no longer prints a generated admin password; it writes it
   to a 0600 file in the data directory.
-- Activity history is pruned after 90 days; internal error logs and responses
-  redact credential-like URL strings, and CLI/startup logs no longer print
-  emails or data-directory paths.
+- Activity history is pruned after 90 days by default
+  (`CONCEPT_ACTIVITY_RETENTION_DAYS`; `0` keeps it all); internal error logs and
+  responses redact credential-like URL strings, and CLI/startup logs no longer
+  print emails or data-directory paths.
 
 ## [0.1.5] - 2026-11-25
 
